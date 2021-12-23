@@ -36,9 +36,15 @@ import time
 import gc
 from matplotlib import pyplot
 import multiprocessing
+import wget
+from pathlib import Path
+import tarfile
+import os
+from datetime import datetime
 #
 from kerassurgeon import Surgeon
 import tensorflow_model_optimization as tfmot
+
 
 retrain_pocs = 8 
 prune_pocs = 8
@@ -320,7 +326,7 @@ def generate_fake_samples(g_model, samples, patch_shape):
 
 # generate samples and save as a plot and save the model
 
-def summarize_performance(step, g_model, d_model, dataset, n_samples=3):
+def summarize_performance(step, g_model, d_model, dataset, prefix, n_samples=3):
 	#clone and remove pruning components
 	#g_model = tensorflow.keras.models.clone_model(g_p_model)
 	#g_model = tfmot.sparsity.keras.strip_pruning(g_p_model)
@@ -349,16 +355,16 @@ def summarize_performance(step, g_model, d_model, dataset, n_samples=3):
 		pyplot.imshow(X_realB[i])
 	# save plot to file
 	filename1 = 'plot_%06d.png' % (step+1)
-	pyplot.savefig(filename1)
+	pyplot.savefig(prefix+filename1)
 	pyplot.close()
 	# save the generator model
 	filename2 = 'gmodel_%06d.h5' % (step+1)
 	filename3 = 'dmodel_%06d.h5' % (step+1)
-	g_model.save(filename2)
-	d_model.save(filename3)
-	print('>Saved: %s and %s and %s' % (filename1, filename2, filename3))
+	g_model.save(prefix+filename2)
+	d_model.save(prefix+filename3)
+	print('>Saved: %s and %s and %s' % (prefix+filename1, prefix+filename2, prefix+filename3))
 
-def plot_compare(step, g_model, g_model_2, dataset, n_samples=3):
+def plot_compare(step, g_model, g_model_2, dataset, prefix, n_samples=3):
 	#clone and remove pruning components
 	#g_model = tensorflow.keras.models.clone_model(g_p_model)
 	#g_model = tfmot.sparsity.keras.strip_pruning(g_p_model)
@@ -393,7 +399,7 @@ def plot_compare(step, g_model, g_model_2, dataset, n_samples=3):
 		pyplot.imshow(X_realB[i])
 	# save plot to file
 	filename1 = 'plot_%06d.png' % (step+1)
-	pyplot.savefig(filename1)
+	pyplot.savefig(prefix+filename1)
 	pyplot.close()
 
 def plot_single(step, g_model, dataset, n_samples=3):
@@ -434,7 +440,7 @@ def plot_single(step, g_model, dataset, n_samples=3):
 
 
 # train pix2pix model
-def train(d_model, g_model, gan_model, dataset, testset, n_epochs=50, n_batch=1):
+def train(d_model, g_model, gan_model, dataset, testset, prefix, n_epochs=50, n_batch=1):
 	# determine the output square shape of the discriminator
 	n_patch = d_model.output_shape[1]
 	# unpack dataset
@@ -459,7 +465,7 @@ def train(d_model, g_model, gan_model, dataset, testset, n_epochs=50, n_batch=1)
 		#print('>%d, d1[%.3f] d2[%.3f] g[%.3f]' % (i+1, d_loss1, d_loss2, g_loss))
 		# summarize model performance
 		if (i+1) % (bat_per_epo * int(n_epochs/10)) == 0:
-			summarize_performance(i, g_model, d_model, testset)
+			summarize_performance(i, g_model, d_model, testset, prefix)
 
 def train_wo_save(d_model, g_model, gan_model, dataset, testset, n_epochs=50, n_batch=1):
 	# determine the output square shape of the discriminator
@@ -665,7 +671,7 @@ def op_on_model_NMP(block_sizes,g_model_weights,remove_points):
 	new_model = surgeon.operate()
 	pruned_weights = new_model.get_weights()
 
-def retrain_n_test(block_sizes,generator_weights,generator_weights_old,descriminator_weights,image_shape,dataset, testset, retrain_pocs, prune_pocs, batch_size, prune_it, conn):
+def retrain_n_test(block_sizes,generator_weights,generator_weights_old,descriminator_weights,image_shape,dataset, testset, retrain_pocs, prune_pocs, batch_size, prune_it, prefix, conn):
 
 	###
 	new_gan = define_generator_edit(block_sizes)
@@ -683,9 +689,9 @@ def retrain_n_test(block_sizes,generator_weights,generator_weights_old,descrimin
 
 	g_model = new_gan
 
-	g_model.save("pruned_pre"+str(prune_it)+".h5")
+	g_model.save(prefix+"pruned_pre"+str(prune_it)+".h5")
 
-	plot_compare(prune_it+20000, g_model, old_gen, dataset)
+	plot_compare(prune_it+20000, g_model, old_gen, dataset, prefix)
 
 	g_model = tensorflow.keras.models.clone_model(g_model,clone_function=apply_pruning_w_params,)
 
@@ -697,14 +703,14 @@ def retrain_n_test(block_sizes,generator_weights,generator_weights_old,descrimin
 	g_model.fit(dataset[0],dataset[1],callbacks=callbacks,epochs=prune_pocs,batch_size=batch_size)
 
 	g_model = tfmot.sparsity.keras.strip_pruning(g_model)
-	g_model.save("pruned_post"+str(prune_it)+".h5")
+	g_model.save(prefix+"pruned_post"+str(prune_it)+".h5")
 	
-	textfile = open("pruned_block_sizes"+str(prune_it)+".txt", "w")
+	textfile = open(prefix+"pruned_block_sizes"+str(prune_it)+".txt", "w")
 	for element in block_sizes:
 		textfile.write(str(element) + "\n")
 	textfile.close()
 	
-	plot_compare(prune_it, g_model, old_gen, dataset)
+	plot_compare(prune_it, g_model, old_gen, dataset, prefix)
 
 	gweights = g_model.get_weights()
 	dweights = d_model.get_weights()
@@ -712,7 +718,7 @@ def retrain_n_test(block_sizes,generator_weights,generator_weights_old,descrimin
 	conn.close()
 
 
-def retrain_n_test_no_mp(block_sizes,generator_weights,generator_weights_old,descriminator_weights,image_shape,dataset, testset, retrain_pocs, prune_pocs, batch_size, prune_it):
+def retrain_n_test_no_mp(block_sizes,generator_weights,generator_weights_old,descriminator_weights,image_shape,dataset, testset, retrain_pocs, prune_pocs, batch_size, prune_it, prefix):
 
 	###
 	new_gan = define_generator_edit(block_sizes)
@@ -732,7 +738,7 @@ def retrain_n_test_no_mp(block_sizes,generator_weights,generator_weights_old,des
 
 	g_model.save("pruned_pre"+str(prune_it)+".h5")
 
-	plot_compare(prune_it+20000, g_model, old_gen, dataset)
+	plot_compare(prune_it+20000, g_model, old_gen, dataset, prefix)
 
 	g_model = tensorflow.keras.models.clone_model(g_model,clone_function=apply_pruning_w_params,)
 
@@ -751,7 +757,7 @@ def retrain_n_test_no_mp(block_sizes,generator_weights,generator_weights_old,des
 		textfile.write(str(element) + "\n")
 	textfile.close()
 	
-	plot_compare(prune_it, g_model, old_gen, dataset)
+	plot_compare(prune_it, g_model, old_gen, dataset, prefix)
 
 	gweights = g_model.get_weights()
 	dweights = d_model.get_weights()
@@ -759,26 +765,122 @@ def retrain_n_test_no_mp(block_sizes,generator_weights,generator_weights_old,des
 
 if __name__ == "__main__":
 
+	d_select = 4
+
+	dataset_website = "http://efrosgans.eecs.berkeley.edu/pix2pix/datasets/"
+
+
+	# make dataset directory 
+	
+	if not os.path.exists('datasets'):
+		os.makedirs('datasets')
+
+	if not os.path.exists('experiments'):
+		os.makedirs('experiments')
+
+	# select dataset
+
+	if d_select == 1:
+		dataset_prefix = "cityscapes.tar.gz"
+		dataset_folder = "cityscapes"
+	elif d_select == 2:
+		dataset_prefix = "edges2handbags.tar.gz"
+		dataset_folder = "edges2handbags"
+	elif d_select == 3:
+		dataset_prefix = "edges2shoes.tar.gz"
+		dataset_folder = "edges2shoes"
+	elif d_select == 4:
+		dataset_prefix = "facades.tar.gz"
+		dataset_folder = "facades"
+	elif d_select == 5:
+		dataset_prefix = "maps.tar.gz"
+		dataset_folder = "maps"
+	elif d_select == 6:
+		dataset_prefix = "night2day.tar.gz"
+		dataset_folder = "night2day"
+
+	if not os.path.exists("datasets/"+dataset_folder):
+		os.makedirs('datasets/'+dataset_folder)
+		os.makedirs('experiments/'+dataset_folder)
+
+	print("Selected " + dataset_folder)
+
+	### download dataset
+	if not os.path.exists("datasets/"+dataset_folder+"/"+dataset_prefix):
+		print("downloading")
+		download = dataset_website + dataset_prefix
+		data_folder = os.getcwd()+"/datasets/"+dataset_folder+"/"
+		wget.download(download,out = data_folder)
+
+		### extract files
+		print("Extracting")
+		Tar_file = os.getcwd()+"/datasets/"+dataset_folder+"/"+dataset_prefix
+		tar = tarfile.open(Tar_file, 'r')
+		for item in tar:
+			tar.extract(item, os.getcwd()+"/datasets/"+dataset_folder+"/")
+			if item.name.find(".tgz") != -1 or item.name.find(".tar") != -1:
+				extract(item.name, "./" + item.name[:item.name.rfind('/')])
+
+		tar.close()
+
+		#
+		## save trainset
+		#
+
+		save_loc = os.getcwd()+"/datasets/"+dataset_folder+"/"+dataset_folder+"/train"
+
+		[src_images, tar_images] = load_images(save_loc)
+		print('Loaded: ', src_images.shape, tar_images.shape)
+
+		#
+		## save as compressed numpy array
+		#
+		filename = dataset_folder+'train.npz'
+		savez_compressed(os.getcwd()+"/datasets/"+dataset_folder+"/"+dataset_folder+"/"+filename, src_images, tar_images)
+		print('Saved dataset: ', filename)
+
+		#
+		## save valset
+		#
+
+		save_loc = os.getcwd()+"/datasets/"+dataset_folder+"/"+dataset_folder+"/val"
+
+		[src_images, tar_images] = load_images(save_loc)
+		print('Loaded: ', src_images.shape, tar_images.shape)
+
+		#
+		## save as compressed numpy array
+		#
+		filename = dataset_folder+'val.npz'
+		savez_compressed(os.getcwd()+"/datasets/"+dataset_folder+"/"+dataset_folder+"/"+filename, src_images, tar_images)
+		print('Saved dataset: ', filename)
 
 	# load image data
-	dataset = load_real_samples('maps_256.npz')
-	testset = load_real_samples('maps_test_set_256.npz')
+	dataset = load_real_samples(os.getcwd()+"/datasets/"+dataset_folder+"/"+dataset_folder+"/"+dataset_folder+"train.npz")
+	testset = load_real_samples(os.getcwd()+"/datasets/"+dataset_folder+"/"+dataset_folder+"/"+dataset_folder+"val.npz")
 
+	today = datetime.now()
 
+	h = str(today.hour)
+	m = str(today.minute)
 
-	prune_low_magnitude = tfmot.sparsity.keras.prune_low_magnitude
-	
 	if Flip:
 		# for generating from facades
 		one = dataset[0]
 		two = dataset[1]
 		dataset = two,one
+		prefix = os.getcwd()+"/experiments/"+dataset_folder+"/"+ today.strftime('%Y%m%d')+ h + m + "Flip/"
 
 		# for generating from facades
 		one = testset[0]
 		two = testset[1]
 		testset = two,one
+	else:
+		prefix = os.getcwd()+"/experiments/"+dataset_folder+"/"+ today.strftime('%Y%m%d')+ h + m + "No_Flip/"
 
+	os.mkdir(prefix)
+
+	prune_low_magnitude = tfmot.sparsity.keras.prune_low_magnitude
 	print('Loaded', dataset[0].shape, dataset[1].shape)
 
 	# define input shape based on the loaded dataset
@@ -792,11 +894,11 @@ if __name__ == "__main__":
 
 	gan_model = define_pruned_gan(g_model, d_model, image_shape)
 
-	train_wo_save(d_model, g_model, gan_model, dataset, testset, n_epochs=n_init_epochs, n_batch=1)
+	train(d_model, g_model, gan_model, dataset, testset, prefix, n_epochs=n_init_epochs, n_batch=1)
 
 	old_weights = g_model.get_weights()
 
-	g_model.save("UnPrunedModel.h5")
+	g_model.save(prefix+"UnPrunedModel.h5")
 
 	###### Initial Prune ######
 
@@ -814,7 +916,7 @@ if __name__ == "__main__":
 	g_model.compile(loss=['mae'], optimizer=opt)
 	g_model.fit(dataset[0],dataset[1],callbacks=callbacks,epochs=n_init_epochs)
 	g_model = tfmot.sparsity.keras.strip_pruning(g_model)
-	g_model.save("PrunedModel.h5")
+	g_model.save(prefix+"PrunedModel.h5")
 	
 	###########################
 	
@@ -863,7 +965,7 @@ if __name__ == "__main__":
 
 				reader_process = multiprocessing.Process(target=retrain_n_test, args=(block_sizes,pruned_weights,old_weights,
 																		  d_model_weights,image_shape,dataset, testset, retrain_pocs, 
-																		  prune_pocs, retrain_batches, prune_it, child_conn))
+																		  prune_pocs, retrain_batches, prune_it, prefix, child_conn))
 
 				reader_process.start()
 				
