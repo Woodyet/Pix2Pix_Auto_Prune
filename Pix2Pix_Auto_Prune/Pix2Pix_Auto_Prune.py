@@ -46,10 +46,12 @@ from kerassurgeon import Surgeon
 import tensorflow_model_optimization as tfmot
 
 
-retrain_pocs = 8 
+retrain_pocs = 10 
 prune_pocs = 8
-prune_loops = 40
+prune_loops = 100
 n_init_epochs = 50
+n_batch = 1
+n_batch_fit = 32
 bulk_samples_to_test = 32
 Flip = False
 
@@ -73,20 +75,39 @@ def apply_pruning(layer):
         return layer
 
 # load all images from the directory into memory with appropriate preprocessing
-
-def load_images(path, size=(256,512)):
-	src_list, tar_list = list(), list()
-	# enumerate filenames in directory, assuming all are images
-	for filename in listdir(path):
-		# load and resize the image
-		pixels = load_img(path + '\\' + filename, target_size=size)
-		# convert to numpy array
-		pixels = img_to_array(pixels)
-		# split into satellite and map
-		sat_img, map_img = pixels[:, :256], pixels[:, 256:]
-		src_list.append(sat_img)
-		tar_list.append(map_img)
-	return [asarray(src_list), asarray(tar_list)]
+def choose_load_images(Selector):
+	if Selector:
+		def load_images(path, size=(256,512)):
+			src_list, tar_list = list(), list()
+			# enumerate filenames in directory, assuming all are images
+			print("Processing Images")
+			for filename in tqdm(listdir(path)):
+				# load and resize the image
+				pixels = load_img(path + '\\' + filename, target_size=size)
+				# convert to numpy array
+				pixels = img_to_array(pixels)
+				pixels = pixels.astype(np.int16)
+				# split into satellite and map
+				sat_img, map_img = pixels[:, :256], pixels[:, 256:]
+				src_list.append(sat_img)
+				tar_list.append(map_img)
+			return [asarray(src_list), asarray(tar_list)]
+	else:
+		def load_images(path, size=(256,512)):
+			src_list, tar_list = list(), list()
+			# enumerate filenames in directory, assuming all are images
+			print("Processing Images")
+			for filename in tqdm(listdir(path)):
+				# load and resize the image
+				pixels = load_img(path + '\\' + filename, target_size=size)
+				# convert to numpy array
+				pixels = img_to_array(pixels)
+				# split into satellite and map
+				sat_img, map_img = pixels[:, :256], pixels[:, 256:]
+				src_list.append(sat_img)
+				tar_list.append(map_img)
+			return [asarray(src_list), asarray(tar_list)]
+	return load_images
 
 # define the discriminator model
 
@@ -191,7 +212,7 @@ def define_generator(image_shape=(256,256,3)):
 	d6 = decoder_block(d5, e2, 128, dropout=False)
 	d7 = decoder_block(d6, e1, 64, dropout=False)
 	# output
-	g = Conv2DTranspose(3, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(d7)
+	g = Conv2DTranspose(3, (4,4), strides=(2,2), padding='same', name='no_prune', kernel_initializer=init)(d7)
 	out_image = Activation('tanh')(g)
 	# define model
 	model = Model(in_image, out_image)
@@ -225,7 +246,7 @@ def define_generator_edit(block_sizes,image_shape=(256,256,3)):
 	d6 = decoder_block(d5, e2, block_sizes[13], dropout=False)
 	d7 = decoder_block(d6, e1, block_sizes[14], dropout=False)
 	# output
-	g = Conv2DTranspose(3, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(d7)
+	g = Conv2DTranspose(3, (4,4), strides=(2,2), padding='same', name='no_prune', kernel_initializer=init)(d7)
 	out_image = Activation('tanh')(g)
 	# define model
 	model = Model(in_image, out_image)
@@ -506,7 +527,19 @@ def add_prune_to_gen(g_model,prune_pocs):
 	g_model.compile(loss=['mae'], optimizer=opt)
 	return g_model
 
-def find_nodes(weights,block_sizes,batches,n_samples,conn):
+def find_nodes(weights,block_sizes,testset_file_loc,n_samples,Flip,conn):
+	###### Load Data ####
+
+	batches = load_real_samples(testset_file_loc)
+	#batches = tensorflow.convert_to_tensor(testset, dtype=tensorflow.float32)
+
+	if Flip:
+		# for generating from facades
+		one = batches[0]
+		two = batches[1]
+		batches = [two,one]
+
+
 	###### Splitting Model #######
 	gan = define_generator_edit(block_sizes)
 	gan.set_weights(weights)
@@ -515,7 +548,6 @@ def find_nodes(weights,block_sizes,batches,n_samples,conn):
 	    if isinstance(layer, tensorflow.keras.layers.Conv2D):
 	        if gan.layers[-1].name not in layer.name:
 	            main_model = tensorflow.keras.models.clone_model(gan)
-	            time.sleep(1)
 	            while True:
 	                if main_model.layers[-1].name == layer.name:
 	                    submodels.append(Model(inputs=main_model.input, outputs=main_model.layers[-1].output))
@@ -614,7 +646,7 @@ def find_nodes(weights,block_sizes,batches,n_samples,conn):
 			if i != []:
 				nothing_removed = False
 				channels_removed += len(i)
-		if channels_removed < total_blocks*0.01:
+		if channels_removed < total_blocks*0.005: #change number to chnage prune ammount percentage removal
 			nothing_removed = True
 		mulitplier += 0.01
 		counter += 1
@@ -636,7 +668,7 @@ def op_on_model(block_sizes,g_model_weights,remove_points,conn):
 				if remove_points[i] != []:
 					j = 0
 					for layer in g_model.layers:
-						if layer1.name == layer.name: #and not("transpose" in layer.name):
+						if layer1.name == layer.name and layer1.name != 'no_prune': #and not("transpose" in layer.name):
 							surgeon.add_job('delete_channels', g_model.layers[j],channels=remove_points[i])
 							block_sizes[i] -= len(remove_points[i])
 							break
@@ -671,7 +703,24 @@ def op_on_model_NMP(block_sizes,g_model_weights,remove_points):
 	new_model = surgeon.operate()
 	pruned_weights = new_model.get_weights()
 
-def retrain_n_test(block_sizes,generator_weights,generator_weights_old,descriminator_weights,image_shape,dataset, testset, retrain_pocs, prune_pocs, batch_size, prune_it, prefix, conn):
+def retrain_n_test(block_sizes,generator_weights,generator_weights_old,descriminator_weights,image_shape,dataset_file_loc, testset_file_loc, retrain_pocs, prune_pocs, batch_size, prune_it, prefix,Flip, conn):
+	### LOAD DATASETS
+
+	dataset = load_real_samples(dataset_file_loc)
+	#dataset = tensorflow.convert_to_tensor(dataset, dtype=tensorflow.float32)
+	testset = load_real_samples(testset_file_loc)
+	#testset = tensorflow.convert_to_tensor(testset, dtype=tensorflow.float32)
+
+	if Flip:
+		# for generating from facades
+		one = dataset[0]
+		two = dataset[1]
+		dataset = [two,one]
+
+		# for generating from facades
+		one = testset[0]
+		two = testset[1]
+		testset = [two,one]
 
 	###
 	new_gan = define_generator_edit(block_sizes)
@@ -685,13 +734,13 @@ def retrain_n_test(block_sizes,generator_weights,generator_weights_old,descrimin
 
 	gan_model = define_pruned_gan(new_gan, d_model, image_shape)
 
-	train_wo_save(d_model, new_gan, gan_model, dataset, testset, retrain_pocs ,n_batch=1)
+	train_wo_save(d_model, new_gan, gan_model, dataset, testset, retrain_pocs ,n_batch=n_batch)
 
 	g_model = new_gan
 
 	g_model.save(prefix+"pruned_pre"+str(prune_it)+".h5")
 
-	plot_compare(prune_it+20000, g_model, old_gen, dataset, prefix)
+	plot_compare(prune_it+20000, g_model, old_gen, testset, prefix)
 
 	g_model = tensorflow.keras.models.clone_model(g_model,clone_function=apply_pruning_w_params,)
 
@@ -700,7 +749,7 @@ def retrain_n_test(block_sizes,generator_weights,generator_weights_old,descrimin
 
 	callbacks = [tfmot.sparsity.keras.UpdatePruningStep()]
 
-	g_model.fit(dataset[0],dataset[1],callbacks=callbacks,epochs=prune_pocs,batch_size=batch_size)
+	g_model.fit(dataset[0],dataset[1],callbacks=callbacks,epochs=prune_pocs,batch_size=n_batch_fit)
 
 	g_model = tfmot.sparsity.keras.strip_pruning(g_model)
 	g_model.save(prefix+"pruned_post"+str(prune_it)+".h5")
@@ -710,7 +759,7 @@ def retrain_n_test(block_sizes,generator_weights,generator_weights_old,descrimin
 		textfile.write(str(element) + "\n")
 	textfile.close()
 	
-	plot_compare(prune_it, g_model, old_gen, dataset, prefix)
+	plot_compare(prune_it, g_model, old_gen, testset, prefix)
 
 	gweights = g_model.get_weights()
 	dweights = d_model.get_weights()
@@ -732,7 +781,7 @@ def retrain_n_test_no_mp(block_sizes,generator_weights,generator_weights_old,des
 
 	gan_model = define_pruned_gan(new_gan, d_model, image_shape)
 
-	train_wo_save(d_model, new_gan, gan_model, dataset, testset, retrain_pocs ,n_batch=1)
+	train_wo_save(d_model, new_gan, gan_model, dataset, testset, retrain_pocs ,n_batch=n_batch)
 
 	g_model = new_gan
 
@@ -747,7 +796,7 @@ def retrain_n_test_no_mp(block_sizes,generator_weights,generator_weights_old,des
 
 	callbacks = [tfmot.sparsity.keras.UpdatePruningStep()]
 
-	g_model.fit(dataset[0],dataset[1],callbacks=callbacks,epochs=prune_pocs,batch_size=batch_size)
+	g_model.fit(dataset[0],dataset[1],callbacks=callbacks,epochs=prune_pocs,batch_size=n_batch_fit)
 
 	g_model = tfmot.sparsity.keras.strip_pruning(g_model)
 	g_model.save("pruned_post"+str(prune_it)+".h5")
@@ -764,9 +813,10 @@ def retrain_n_test_no_mp(block_sizes,generator_weights,generator_weights_old,des
 
 
 if __name__ == "__main__":
+	tensorflow.keras.backend.clear_session
 
-	d_select = 4
-
+	d_select = 5
+	retrain_batches = 32
 	dataset_website = "http://efrosgans.eecs.berkeley.edu/pix2pix/datasets/"
 
 
@@ -779,7 +829,8 @@ if __name__ == "__main__":
 		os.makedirs('experiments')
 
 	# select dataset
-
+	# load_images = choose_load_images(False)
+	load_images = choose_load_images(True)
 	if d_select == 1:
 		dataset_prefix = "cityscapes.tar.gz"
 		dataset_folder = "cityscapes"
@@ -812,6 +863,8 @@ if __name__ == "__main__":
 		data_folder = os.getcwd()+"/datasets/"+dataset_folder+"/"
 		wget.download(download,out = data_folder)
 
+	to_check = "datasets/"+dataset_folder+"/"+dataset_folder+"/"+"train"
+	if not os.path.exists(to_check):
 		### extract files
 		print("Extracting")
 		Tar_file = os.getcwd()+"/datasets/"+dataset_folder+"/"+dataset_prefix
@@ -823,41 +876,45 @@ if __name__ == "__main__":
 
 		tar.close()
 
+	if not os.path.exists(os.getcwd()+"/datasets/"+dataset_folder+"/"+dataset_folder+"/"+dataset_folder+'train.npz'):
 		#
 		## save trainset
 		#
-
 		save_loc = os.getcwd()+"/datasets/"+dataset_folder+"/"+dataset_folder+"/train"
-
 		[src_images, tar_images] = load_images(save_loc)
 		print('Loaded: ', src_images.shape, tar_images.shape)
-
 		#
 		## save as compressed numpy array
 		#
 		filename = dataset_folder+'train.npz'
+		print('Compressing and saving data (can take some time... sorry no progress bar)')
 		savez_compressed(os.getcwd()+"/datasets/"+dataset_folder+"/"+dataset_folder+"/"+filename, src_images, tar_images)
 		print('Saved dataset: ', filename)
-
+		del src_images, tar_images 
+	if not os.path.exists(os.getcwd()+"/datasets/"+dataset_folder+"/"+dataset_folder+"/"+dataset_folder+'val.npz'):
 		#
 		## save valset
 		#
-
 		save_loc = os.getcwd()+"/datasets/"+dataset_folder+"/"+dataset_folder+"/val"
-
 		[src_images, tar_images] = load_images(save_loc)
 		print('Loaded: ', src_images.shape, tar_images.shape)
-
 		#
 		## save as compressed numpy array
 		#
 		filename = dataset_folder+'val.npz'
+		print('Compressing and saving data (can take some time... sorry no progress bar)')
 		savez_compressed(os.getcwd()+"/datasets/"+dataset_folder+"/"+dataset_folder+"/"+filename, src_images, tar_images)
 		print('Saved dataset: ', filename)
-
+		del src_images, tar_images
 	# load image data
-	dataset = load_real_samples(os.getcwd()+"/datasets/"+dataset_folder+"/"+dataset_folder+"/"+dataset_folder+"train.npz")
-	testset = load_real_samples(os.getcwd()+"/datasets/"+dataset_folder+"/"+dataset_folder+"/"+dataset_folder+"val.npz")
+	print("Loading " + dataset_folder)
+	dataset_file_loc = os.getcwd()+"/datasets/"+dataset_folder+"/"+dataset_folder+"/"+dataset_folder+"train.npz"
+	testset_file_loc = os.getcwd()+"/datasets/"+dataset_folder+"/"+dataset_folder+"/"+dataset_folder+"val.npz"
+	dataset = load_real_samples(dataset_file_loc)
+	#dataset = tensorflow.convert_to_tensor(dataset, dtype=tensorflow.float32)
+	testset = load_real_samples(testset_file_loc)
+	#testset = tensorflow.convert_to_tensor(testset, dtype=tensorflow.float32)
+
 
 	today = datetime.now()
 
@@ -868,13 +925,13 @@ if __name__ == "__main__":
 		# for generating from facades
 		one = dataset[0]
 		two = dataset[1]
-		dataset = two,one
+		dataset = [two,one]
 		prefix = os.getcwd()+"/experiments/"+dataset_folder+"/"+ today.strftime('%Y%m%d')+ h + m + "Flip/"
 
 		# for generating from facades
 		one = testset[0]
 		two = testset[1]
-		testset = two,one
+		testset = [two,one]
 	else:
 		prefix = os.getcwd()+"/experiments/"+dataset_folder+"/"+ today.strftime('%Y%m%d')+ h + m + "No_Flip/"
 
@@ -894,7 +951,7 @@ if __name__ == "__main__":
 
 	gan_model = define_pruned_gan(g_model, d_model, image_shape)
 
-	train(d_model, g_model, gan_model, dataset, testset, prefix, n_epochs=n_init_epochs, n_batch=1)
+	train(d_model, g_model, gan_model, dataset, testset, prefix, n_epochs=n_init_epochs, n_batch=n_batch)
 
 	old_weights = g_model.get_weights()
 
@@ -914,7 +971,7 @@ if __name__ == "__main__":
 
 	opt = Adam(lr=0.0002, beta_1=0.5)
 	g_model.compile(loss=['mae'], optimizer=opt)
-	g_model.fit(dataset[0],dataset[1],callbacks=callbacks,epochs=n_init_epochs)
+	g_model.fit(dataset[0],dataset[1],callbacks=callbacks,epochs=n_init_epochs, batch_size = n_batch_fit)
 	g_model = tfmot.sparsity.keras.strip_pruning(g_model)
 	g_model.save(prefix+"PrunedModel.h5")
 	
@@ -928,12 +985,18 @@ if __name__ == "__main__":
 	weights = g_model.get_weights()
 	d_model_weights = d_model.get_weights()
 	
+	del dataset
+	del testset
+	del g_model
+	del d_model
+	del gan_model
+	tensorflow.keras.backend.clear_session
 
 	for prune_it in range(prune_loops):
 
 				parent_conn, child_conn = multiprocessing.Pipe()
 
-				reader_process  = multiprocessing.Process(target=find_nodes, args=(weights,block_sizes,testset,bulk_samples_to_test,child_conn))
+				reader_process  = multiprocessing.Process(target=find_nodes, args=(weights,block_sizes,testset_file_loc,bulk_samples_to_test,Flip,child_conn))
 
 				reader_process.start()
 				
@@ -961,11 +1024,11 @@ if __name__ == "__main__":
 
 				parent_conn, child_conn = multiprocessing.Pipe()
 
-				retrain_batches = 32
+				
 
 				reader_process = multiprocessing.Process(target=retrain_n_test, args=(block_sizes,pruned_weights,old_weights,
-																		  d_model_weights,image_shape,dataset, testset, retrain_pocs, 
-																		  prune_pocs, retrain_batches, prune_it, prefix, child_conn))
+																		  d_model_weights,image_shape,dataset_file_loc, testset_file_loc, retrain_pocs, 
+																		  prune_pocs, retrain_batches, prune_it, prefix,Flip,child_conn))
 
 				reader_process.start()
 				
@@ -974,5 +1037,6 @@ if __name__ == "__main__":
 				[weights,d_model_weights] = remove_points_returned
 
 				reader_process.join()
+				tensorflow.keras.backend.clear_session
 
 

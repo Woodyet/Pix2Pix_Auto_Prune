@@ -12,6 +12,7 @@
     <Name>Pix2Pix_Auto_Prune</Name>
     <RootNamespace>Pix2Pix_Auto_Prune</RootNamespace>
     <InterpreterId>CondaEnv|CondaEnv|tensorflow-gpu-2</InterpreterId>
+    <SuppressPackageInstallationPrompt>True</SuppressPackageInstallationPrompt>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
     <DebugSymbols>true</DebugSymbols>
