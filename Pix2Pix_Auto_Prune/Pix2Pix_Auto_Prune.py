@@ -41,10 +41,19 @@ from pathlib import Path
 import tarfile
 import os
 from datetime import datetime
-#
+from sys import platform
+
 from kerassurgeon import Surgeon
 import tensorflow_model_optimization as tfmot
 
+
+if platform == "linux" or platform == "linux2":
+    print("Linux Detected")
+	multiprocessing.set_start_method("spawn")
+elif platform == "darwin":
+    sys.exit("OSx not supported")
+elif platform == "win32":
+    print("Windows Detected")
 
 retrain_pocs = 10 
 prune_pocs = 8
