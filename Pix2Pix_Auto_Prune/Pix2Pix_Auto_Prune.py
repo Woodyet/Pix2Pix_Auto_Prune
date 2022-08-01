@@ -92,7 +92,7 @@ def choose_load_images(Selector):
 			print("Processing Images")
 			for filename in tqdm(listdir(path)):
 				# load and resize the image
-				pixels = load_img(path + '\\' + filename, target_size=size)
+				pixels = load_img(path + '/' + filename, target_size=size)
 				# convert to numpy array
 				pixels = img_to_array(pixels)
 				pixels = pixels.astype(np.int16)
@@ -108,7 +108,7 @@ def choose_load_images(Selector):
 			print("Processing Images")
 			for filename in tqdm(listdir(path)):
 				# load and resize the image
-				pixels = load_img(path + '\\' + filename, target_size=size)
+				pixels = load_img(path + '/' + filename, target_size=size)
 				# convert to numpy array
 				pixels = img_to_array(pixels)
 				# split into satellite and map
