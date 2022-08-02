@@ -45,7 +45,7 @@ from sys import platform
 
 from kerassurgeon import Surgeon
 import tensorflow_model_optimization as tfmot
-
+#test
 retrain_pocs = 10 
 prune_pocs = 8
 prune_loops = 100
