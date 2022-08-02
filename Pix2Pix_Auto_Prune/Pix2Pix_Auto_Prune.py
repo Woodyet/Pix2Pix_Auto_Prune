@@ -45,7 +45,7 @@ from sys import platform
 
 from kerassurgeon import Surgeon
 import tensorflow_model_optimization as tfmot
-#test
+
 retrain_pocs = 10 
 prune_pocs = 8
 prune_loops = 100
@@ -54,6 +54,9 @@ n_batch = 1
 n_batch_fit = 32
 bulk_samples_to_test = 32
 Flip = False
+d_select = 5
+retrain_batches = 32
+dataset_website = "http://efrosgans.eecs.berkeley.edu/pix2pix/datasets/"
 
 def apply_pruning_w_params(layer):
         end_step = end_step = 1096*prune_pocs
@@ -83,7 +86,7 @@ def choose_load_images(Selector):
 			print("Processing Images")
 			for filename in tqdm(listdir(path)):
 				# load and resize the image
-				pixels = load_img(path + '/' + filename, target_size=size)
+				pixels = load_img(path + '\\' + filename, target_size=size)
 				# convert to numpy array
 				pixels = img_to_array(pixels)
 				pixels = pixels.astype(np.int16)
@@ -99,7 +102,7 @@ def choose_load_images(Selector):
 			print("Processing Images")
 			for filename in tqdm(listdir(path)):
 				# load and resize the image
-				pixels = load_img(path + '/' + filename, target_size=size)
+				pixels = load_img(path + '\\' + filename, target_size=size)
 				# convert to numpy array
 				pixels = img_to_array(pixels)
 				# split into satellite and map
@@ -462,6 +465,7 @@ def plot_single(step, g_model, dataset, n_samples=3):
 
 # train pix2pix model
 def train(d_model, g_model, gan_model, dataset, testset, prefix, n_epochs=50, n_batch=1):
+	Tested = True
 	# determine the output square shape of the discriminator
 	n_patch = d_model.output_shape[1]
 	# unpack dataset
@@ -485,8 +489,15 @@ def train(d_model, g_model, gan_model, dataset, testset, prefix, n_epochs=50, n_
 		# summarize performance
 		#print('>%d, d1[%.3f] d2[%.3f] g[%.3f]' % (i+1, d_loss1, d_loss2, g_loss))
 		# summarize model performance
-		if (i+1) % (bat_per_epo * int(n_epochs/10)) == 0:
-			summarize_performance(i, g_model, d_model, testset, prefix)
+		try:
+			if (i+1) % (bat_per_epo * int(n_epochs/10)) == 0:
+				summarize_performance(i, g_model, d_model, testset, prefix)
+				Tested = False
+		except:
+			pass
+	if Tested:
+		summarize_performance(i, g_model, d_model, testset, prefix)
+
 
 def train_wo_save(d_model, g_model, gan_model, dataset, testset, n_epochs=50, n_batch=1):
 	# determine the output square shape of the discriminator
@@ -811,6 +822,73 @@ def retrain_n_test_no_mp(block_sizes,generator_weights,generator_weights_old,des
 	gweights = g_model.get_weights()
 	dweights = d_model.get_weights()
 
+def init_train(image_shape,dataset_file_loc,testset_file_loc, testset, prefix, n_init_epochs, n_batch, conn):
+	### LOAD DATASETS
+
+	dataset = load_real_samples(dataset_file_loc)
+	#dataset = tensorflow.convert_to_tensor(dataset, dtype=tensorflow.float32)
+	testset = load_real_samples(testset_file_loc)
+	#testset = tensorflow.convert_to_tensor(testset, dtype=tensorflow.float32)
+
+	# define the models
+	d_model = define_discriminator(image_shape)
+	g_model = define_generator(image_shape)
+
+	####### Inital Train #####
+
+	gan_model = define_pruned_gan(g_model, d_model, image_shape)
+
+	train(d_model, g_model, gan_model, dataset, testset, prefix, n_epochs=n_init_epochs, n_batch=n_batch)
+
+	old_g_weights = g_model.get_weights()
+	old_d_weights = d_model.get_weights()
+
+	g_model.save(prefix+"UnPrunedModel.h5")
+
+	conn.send([old_g_weights,old_d_weights])
+	conn.close()
+
+def init_prune(image_shape,dweights,gweights,n_init_epochs,n_batch_fit,dataset_file_loc,prefix,conn):
+	### LOAD DATASETS
+
+	dataset = load_real_samples(dataset_file_loc)
+	#dataset = tensorflow.convert_to_tensor(dataset, dtype=tensorflow.float32)
+
+	###### Initial Prune ######
+
+	# define the models
+	d_model = define_discriminator(image_shape)
+	g_model = define_generator(image_shape)
+
+	d_model.set_weights(dweights)
+	g_model.set_weights(gweights)
+
+	####### Inital Train #####
+
+	gan_model = define_pruned_gan(g_model, d_model, image_shape)
+
+
+	end_step = end_step = 1096*n_init_epochs
+	pruning_params = {
+	  'pruning_schedule': tfmot.sparsity.keras.PolynomialDecay(initial_sparsity=0.50,
+															   final_sparsity=0.80,
+															   begin_step=0,
+															   end_step=end_step)
+	}
+
+	callbacks = [tfmot.sparsity.keras.UpdatePruningStep()]
+
+	opt = Adam(lr=0.0002, beta_1=0.5)
+	g_model.compile(loss=['mae'], optimizer=opt)
+	g_model.fit(dataset[0],dataset[1],callbacks=callbacks,epochs=n_init_epochs, batch_size = n_batch_fit)
+	g_model = tfmot.sparsity.keras.strip_pruning(g_model)
+	g_model.save(prefix+"PrunedModel.h5")
+	
+	weights = g_model.get_weights()
+	d_model_weights = d_model.get_weights()
+
+	conn.send([weights,d_model_weights])
+	conn.close()
 
 if __name__ == "__main__":
 	tensorflow.keras.backend.clear_session
@@ -825,12 +903,6 @@ if __name__ == "__main__":
 		sys.exit("OSx not supported")
 	elif platform == "win32":
 		print("Windows Detected")
-	
-	
-	d_select = 5
-	retrain_batches = 32
-	dataset_website = "http://efrosgans.eecs.berkeley.edu/pix2pix/datasets/"
-
 
 	# make dataset directory 
 	
@@ -863,8 +935,8 @@ if __name__ == "__main__":
 		dataset_folder = "night2day"
 
 	if not os.path.exists("datasets/"+dataset_folder):
-		os.makedirs('datasets/'+dataset_folder)
-		os.makedirs('experiments/'+dataset_folder)
+		os.makedirs('datasets\\'+dataset_folder)
+		os.makedirs('experiments\\'+dataset_folder)
 
 	print("Selected " + dataset_folder)
 
@@ -884,7 +956,7 @@ if __name__ == "__main__":
 		for item in tar:
 			tar.extract(item, os.getcwd()+"/datasets/"+dataset_folder+"/")
 			if item.name.find(".tgz") != -1 or item.name.find(".tar") != -1:
-				extract(item.name, "./" + item.name[:item.name.rfind('/')])
+				extract(item.name, "./" + item.name[:item.name.rfind('\\')])
 
 		tar.close()
 
@@ -927,6 +999,8 @@ if __name__ == "__main__":
 	testset = load_real_samples(testset_file_loc)
 	#testset = tensorflow.convert_to_tensor(testset, dtype=tensorflow.float32)
 
+	if not os.path.exists(os.getcwd()+"/experiments/"+dataset_folder):
+		os.mkdir(os.getcwd()+"/experiments/"+dataset_folder)
 
 	today = datetime.now()
 
@@ -955,53 +1029,43 @@ if __name__ == "__main__":
 	# define input shape based on the loaded dataset
 	image_shape = dataset[0].shape[1:]
 	
-	# define the models
-	d_model = define_discriminator(image_shape)
-	g_model = define_generator(image_shape)
+	#######init trian #########
 
-	####### Inital Train #####
+	parent_conn, child_conn = multiprocessing.Pipe()
 
-	gan_model = define_pruned_gan(g_model, d_model, image_shape)
+	reader_process  = multiprocessing.Process(target=init_train, args=(image_shape,dataset_file_loc,testset_file_loc, testset, prefix, n_init_epochs, n_batch, child_conn))
 
-	train(d_model, g_model, gan_model, dataset, testset, prefix, n_epochs=n_init_epochs, n_batch=n_batch)
-
-	old_weights = g_model.get_weights()
-
-	g_model.save(prefix+"UnPrunedModel.h5")
-
-	###### Initial Prune ######
-
-	end_step = end_step = 1096*n_init_epochs
-	pruning_params = {
-	  'pruning_schedule': tfmot.sparsity.keras.PolynomialDecay(initial_sparsity=0.50,
-															   final_sparsity=0.80,
-															   begin_step=0,
-															   end_step=end_step)
-	}
-
-	callbacks = [tfmot.sparsity.keras.UpdatePruningStep()]
-
-	opt = Adam(lr=0.0002, beta_1=0.5)
-	g_model.compile(loss=['mae'], optimizer=opt)
-	g_model.fit(dataset[0],dataset[1],callbacks=callbacks,epochs=n_init_epochs, batch_size = n_batch_fit)
-	g_model = tfmot.sparsity.keras.strip_pruning(g_model)
-	g_model.save(prefix+"PrunedModel.h5")
+	reader_process.start()
 	
-	###########################
+	remove_points_returned = parent_conn.recv()
+	
+	[old_weights,old_d_weights] = remove_points_returned
+
+	reader_process.join()
+
+	#######init prune#########
+
+	parent_conn, child_conn = multiprocessing.Pipe()
+
+	reader_process  = multiprocessing.Process(target=init_prune, args=(image_shape,old_d_weights,old_weights,n_init_epochs,n_batch_fit,dataset_file_loc,prefix,child_conn))
+
+	reader_process.start()
+	
+	remove_points_returned = parent_conn.recv()
+	
+	[weights,d_model_weights] = remove_points_returned
+
+	reader_process.join()
+
+	##################################
 	
 	block_sizes = [64,128,256,512,512,512,512,512,512,512,512,512,256,128,64]
 
 	remove_pointers= {'arr': [],'weigh': [],'blocks':[]}
-
-	
-	weights = g_model.get_weights()
-	d_model_weights = d_model.get_weights()
 	
 	del dataset
 	del testset
-	del g_model
-	del d_model
-	del gan_model
+
 	tensorflow.keras.backend.clear_session
 
 	for prune_it in range(prune_loops):
