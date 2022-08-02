@@ -46,15 +46,6 @@ from sys import platform
 from kerassurgeon import Surgeon
 import tensorflow_model_optimization as tfmot
 
-
-if platform == "linux" or platform == "linux2":
-    print("Linux Detected")
-    multiprocessing.set_start_method("spawn")
-elif platform == "darwin":
-    sys.exit("OSx not supported")
-elif platform == "win32":
-    print("Windows Detected")
-
 retrain_pocs = 10 
 prune_pocs = 8
 prune_loops = 100
@@ -824,6 +815,18 @@ def retrain_n_test_no_mp(block_sizes,generator_weights,generator_weights_old,des
 if __name__ == "__main__":
 	tensorflow.keras.backend.clear_session
 
+	if platform == "linux" or platform == "linux2":
+		print("Linux Detected")
+		try:
+			multiprocessing.set_start_method('spawn')
+		except RuntimeError:
+			pass
+	elif platform == "darwin":
+		sys.exit("OSx not supported")
+	elif platform == "win32":
+		print("Windows Detected")
+	
+	
 	d_select = 5
 	retrain_batches = 32
 	dataset_website = "http://efrosgans.eecs.berkeley.edu/pix2pix/datasets/"
@@ -951,7 +954,7 @@ if __name__ == "__main__":
 
 	# define input shape based on the loaded dataset
 	image_shape = dataset[0].shape[1:]
-
+	
 	# define the models
 	d_model = define_discriminator(image_shape)
 	g_model = define_generator(image_shape)
