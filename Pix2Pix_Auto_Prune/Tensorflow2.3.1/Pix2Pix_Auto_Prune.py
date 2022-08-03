@@ -43,7 +43,7 @@ import os
 from datetime import datetime
 from sys import platform
 
-from kerassurgeon import Surgeon
+from kerassurgeon_old import Surgeon
 import tensorflow_model_optimization as tfmot
 
 retrain_pocs = 10 
