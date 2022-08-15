@@ -63,7 +63,7 @@ retrain_batches = 32
 
 [_,Flip,d_select] = (sys.argv)
 
-Flip = bool(Flip)
+Flip = bool(int(Flip))
 d_select = int(d_select)
 
 dataset_website = "http://efrosgans.eecs.berkeley.edu/pix2pix/datasets/"
