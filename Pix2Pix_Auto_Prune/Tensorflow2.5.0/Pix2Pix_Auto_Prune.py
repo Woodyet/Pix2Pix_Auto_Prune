@@ -47,16 +47,25 @@ from kerassurgeon import Surgeon
 
 import tensorflow_model_optimization as tfmot
 
-retrain_pocs = 10 
-prune_pocs = 8
-prune_loops = 100
+
+
+retrain_pocs = 25 
+prune_pocs = 30
+prune_loops = 50
 n_init_epochs = 50
 n_batch = 1
 n_batch_fit = 32
 bulk_samples_to_test = 32
-Flip = False
-d_select = 5
 retrain_batches = 32
+
+#Flip = False
+#d_select = 5
+
+[Flip,d_select] = str(sys.argv)
+
+Flip = bool(Flip)
+d_select = int(d_select)
+
 dataset_website = "http://efrosgans.eecs.berkeley.edu/pix2pix/datasets/"
 
 def apply_pruning_w_params(layer):
@@ -87,7 +96,7 @@ def choose_load_images(Selector):
 			print("Processing Images")
 			for filename in tqdm(listdir(path)):
 				# load and resize the image
-				pixels = load_img(path + '\\' + filename, target_size=size)
+				pixels = load_img(path + '/' + filename, target_size=size)
 				# convert to numpy array
 				pixels = img_to_array(pixels)
 				pixels = pixels.astype(np.int16)
@@ -103,7 +112,7 @@ def choose_load_images(Selector):
 			print("Processing Images")
 			for filename in tqdm(listdir(path)):
 				# load and resize the image
-				pixels = load_img(path + '\\' + filename, target_size=size)
+				pixels = load_img(path + '/' + filename, target_size=size)
 				# convert to numpy array
 				pixels = img_to_array(pixels)
 				# split into satellite and map
@@ -937,37 +946,37 @@ if __name__ == "__main__":
 		dataset_prefix = "night2day.tar.gz"
 		dataset_folder = "night2day"
 
-	if not os.path.exists("datasets\\"+dataset_folder):
-		os.makedirs('datasets\\'+dataset_folder)
-		os.makedirs('experiments\\'+dataset_folder)
+	if not os.path.exists("datasets/"+dataset_folder):
+		os.makedirs('datasets/'+dataset_folder)
+		os.makedirs('experiments/'+dataset_folder)
 
 	print("Selected " + dataset_folder)
 
 	### download dataset
-	if not os.path.exists("datasets\\"+dataset_folder+"\\"+dataset_prefix):
+	if not os.path.exists("datasets/"+dataset_folder+"/"+dataset_prefix):
 		print("downloading")
 		download = dataset_website + dataset_prefix
-		data_folder = os.getcwd()+"\\datasets\\"+dataset_folder+"\\"
+		data_folder = os.getcwd()+"/datasets/"+dataset_folder+"/"
 		wget.download(download,out = data_folder)
 
-	to_check = "datasets\\"+dataset_folder+"\\"+dataset_folder+"\\"+"train"
+	to_check = "datasets/"+dataset_folder+"/"+dataset_folder+"/"+"train"
 	if not os.path.exists(to_check):
 		### extract files
 		print("Extracting")
-		Tar_file = os.getcwd()+"\\datasets\\"+dataset_folder+"\\"+dataset_prefix
+		Tar_file = os.getcwd()+"/datasets/"+dataset_folder+"/"+dataset_prefix
 		tar = tarfile.open(Tar_file, 'r')
 		for item in tar:
-			tar.extract(item, os.getcwd()+"\\datasets\\"+dataset_folder+"\\")
+			tar.extract(item, os.getcwd()+"/datasets/"+dataset_folder+"/")
 			if item.name.find(".tgz") != -1 or item.name.find(".tar") != -1:
-				extract(item.name, ".\\" + item.name[:item.name.rfind('\\')])
+				extract(item.name, "./" + item.name[:item.name.rfind('/')])
 
 		tar.close()
 
-	if not os.path.exists(os.getcwd()+"\\datasets\\"+dataset_folder+"\\"+dataset_folder+"\\"+dataset_folder+'train.npz'):
+	if not os.path.exists(os.getcwd()+"/datasets/"+dataset_folder+"/"+dataset_folder+"/"+dataset_folder+'train.npz'):
 		#
 		## save trainset
 		#
-		save_loc = os.getcwd()+"\\datasets\\"+dataset_folder+"\\"+dataset_folder+"\\train"
+		save_loc = os.getcwd()+"/datasets/"+dataset_folder+"/"+dataset_folder+"/train"
 		[src_images, tar_images] = load_images(save_loc)
 		print('Loaded: ', src_images.shape, tar_images.shape)
 		#
@@ -975,14 +984,14 @@ if __name__ == "__main__":
 		#
 		filename = dataset_folder+'train.npz'
 		print('Compressing and saving data (can take some time... sorry no progress bar)')
-		savez_compressed(os.getcwd()+"\\datasets\\"+dataset_folder+"\\"+dataset_folder+"\\"+filename, src_images, tar_images)
+		savez_compressed(os.getcwd()+"/datasets/"+dataset_folder+"/"+dataset_folder+"/"+filename, src_images, tar_images)
 		print('Saved dataset: ', filename)
 		del src_images, tar_images 
-	if not os.path.exists(os.getcwd()+"\\datasets\\"+dataset_folder+"\\"+dataset_folder+"\\"+dataset_folder+'val.npz'):
+	if not os.path.exists(os.getcwd()+"/datasets/"+dataset_folder+"/"+dataset_folder+"/"+dataset_folder+'val.npz'):
 		#
 		## save valset
 		#
-		save_loc = os.getcwd()+"\\datasets\\"+dataset_folder+"\\"+dataset_folder+"\\val"
+		save_loc = os.getcwd()+"/datasets/"+dataset_folder+"/"+dataset_folder+"/val"
 		[src_images, tar_images] = load_images(save_loc)
 		print('Loaded: ', src_images.shape, tar_images.shape)
 		#
@@ -990,20 +999,20 @@ if __name__ == "__main__":
 		#
 		filename = dataset_folder+'val.npz'
 		print('Compressing and saving data (can take some time... sorry no progress bar)')
-		savez_compressed(os.getcwd()+"\\datasets\\"+dataset_folder+"\\"+dataset_folder+"\\"+filename, src_images, tar_images)
+		savez_compressed(os.getcwd()+"/datasets/"+dataset_folder+"/"+dataset_folder+"/"+filename, src_images, tar_images)
 		print('Saved dataset: ', filename)
 		del src_images, tar_images
 	# load image data
 	print("Loading " + dataset_folder)
-	dataset_file_loc = os.getcwd()+"\\datasets\\"+dataset_folder+"\\"+dataset_folder+"\\"+dataset_folder+"train.npz"
-	testset_file_loc = os.getcwd()+"\\datasets\\"+dataset_folder+"\\"+dataset_folder+"\\"+dataset_folder+"val.npz"
+	dataset_file_loc = os.getcwd()+"/datasets/"+dataset_folder+"/"+dataset_folder+"/"+dataset_folder+"train.npz"
+	testset_file_loc = os.getcwd()+"/datasets/"+dataset_folder+"/"+dataset_folder+"/"+dataset_folder+"val.npz"
 	dataset = load_real_samples(dataset_file_loc)
 	#dataset = tensorflow.convert_to_tensor(dataset, dtype=tensorflow.float32)
 	testset = load_real_samples(testset_file_loc)
 	#testset = tensorflow.convert_to_tensor(testset, dtype=tensorflow.float32)
 
-	if not os.path.exists(os.getcwd()+"\\experiments\\"+dataset_folder):
-		os.mkdir(os.getcwd()+"\\experiments\\"+dataset_folder)
+	if not os.path.exists(os.getcwd()+"/experiments/"+dataset_folder):
+		os.mkdir(os.getcwd()+"/experiments/"+dataset_folder)
 
 	today = datetime.now()
 
@@ -1015,14 +1024,14 @@ if __name__ == "__main__":
 		one = dataset[0]
 		two = dataset[1]
 		dataset = [two,one]
-		prefix = os.getcwd()+"\\experiments\\"+dataset_folder+"\\"+ today.strftime('%Y%m%d')+ h + m + "Flip\\"
+		prefix = os.getcwd()+"/experiments/"+dataset_folder+"/"+ today.strftime('%Y%m%d')+ h + m + "Flip/"
 
 		# for generating from facades
 		one = testset[0]
 		two = testset[1]
 		testset = [two,one]
 	else:
-		prefix = os.getcwd()+"\\experiments\\"+dataset_folder+"\\"+ today.strftime('%Y%m%d')+ h + m + "No_Flip\\"
+		prefix = os.getcwd()+"/experiments/"+dataset_folder+"/"+ today.strftime('%Y%m%d')+ h + m + "No_Flip/"
 
 	os.mkdir(prefix)
 
