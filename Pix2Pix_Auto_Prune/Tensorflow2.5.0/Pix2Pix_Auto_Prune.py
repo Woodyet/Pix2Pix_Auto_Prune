@@ -61,7 +61,7 @@ retrain_batches = 32
 #Flip = False
 #d_select = 5
 
-[Flip,d_select] = str(sys.argv)
+[_,Flip,d_select] = (sys.argv)
 
 Flip = bool(Flip)
 d_select = int(d_select)
