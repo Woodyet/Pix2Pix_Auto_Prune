@@ -691,16 +691,20 @@ def op_on_model(block_sizes,g_model_weights,remove_points,conn):
 				if remove_points[i] != []:
 					j = 0
 					for layer in g_model.layers:
-						if layer1.name == layer.name and layer1.name != 'no_prune' and layer.name!="conv2d_6": #and not("transpose" in layer.name):
+						if layer1.name == layer.name and layer1.name != 'no_prune': #and not("transpose" in layer.name):
 							surgeon.add_job('delete_channels', g_model.layers[j],channels=remove_points[i])
+							new_model = surgeon.operate()
 							block_sizes[i] -= len(remove_points[i])
+							tensorflow.compat.v1.reset_default_graph()
+							g_model = define_generator_edit(block_sizes)
+							g_model.set_weights(new_model.get_weights())
+							surgeon = Surgeon(g_model)
 							break
 						j+=1 
 				i+=1
 	
-	new_model = surgeon.operate()
-	pruned_weights = new_model.get_weights()
-
+	
+	pruned_weights = g_model.get_weights()
 	conn.send([block_sizes,pruned_weights])
 	conn.close()
 
