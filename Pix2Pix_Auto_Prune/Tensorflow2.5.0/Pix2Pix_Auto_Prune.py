@@ -76,13 +76,13 @@ def apply_pruning_w_params(layer):
         														   begin_step=0,
         														   end_step=end_step)
         }
-        if isinstance(layer, tensorflow.keras.layers.Conv2D) and layer.name!="conv2d_6":                                                 ###########TO STOP PRUNING OF THE LAST LAYER##############
+        if isinstance(layer, tensorflow.keras.layers.Conv2D):                                                 ###########TO STOP PRUNING OF THE LAST LAYER##############
             print(layer.name+" Was Identified for pruning")
             return tfmot.sparsity.keras.prune_low_magnitude(layer, **pruning_params)
         return layer
 
 def apply_pruning(layer):
-        if isinstance(layer, tensorflow.keras.layers.Conv2D) and layer.name!="conv2d_6":                                                 ###########TO STOP PRUNING OF THE LAST LAYER##############
+        if isinstance(layer, tensorflow.keras.layers.Conv2D):                                                 ###########TO STOP PRUNING OF THE LAST LAYER##############
             print(layer.name+" Was Identified for pruning")
             return tfmot.sparsity.keras.prune_low_magnitude(layer, **pruning_params)
         return layer
@@ -570,7 +570,7 @@ def find_nodes(weights,block_sizes,testset_file_loc,n_samples,Flip,conn):
 	        if gan.layers[-1].name not in layer.name:
 	            main_model = tensorflow.keras.models.clone_model(gan)
 	            while True:
-	                if main_model.layers[-1].name == layer.name and layer.name!="conv2d_6":
+	                if main_model.layers[-1].name == layer.name:
 	                    submodels.append(Model(inputs=main_model.input, outputs=main_model.layers[-1].output))
 	                    print("adding " + layer.name + " to probe")
 	                    break
@@ -720,7 +720,7 @@ def op_on_model_NMP(block_sizes,g_model_weights,remove_points):
 				if remove_points[i] != []:
 					j = 0
 					for layer in g_model.layers:
-						if layer1.name == layer.name and layer.name!="conv2d_6": #and not("transpose" in layer.name):
+						if layer1.name == layer.name: #and not("transpose" in layer.name):
 							surgeon.add_job('delete_channels', g_model.layers[j],channels=remove_points[i])
 							block_sizes[i] -= len(remove_points[i])
 							break
