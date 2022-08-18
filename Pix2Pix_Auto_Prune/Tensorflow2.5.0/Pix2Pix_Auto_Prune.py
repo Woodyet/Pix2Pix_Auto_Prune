@@ -1028,12 +1028,7 @@ if __name__ == "__main__":
 		one = dataset[0]
 		two = dataset[1]
 		dataset = [two,one]
-		prefix = os.getcwd()+"/experiments/"+dataset_folder+"/"+ today.strftime('%Y%m%d')+ h + m + "Flip/"
-
-		# for generating from facades
-		one = testset[0]
-		two = testset[1]
-		testset = [two,one]
+		prefix = os.getcwd()+"/experiments/"+dataset_folder+"/"+ today.strftime('%Y%m%d')+ h + m + "Flip/"		
 	else:
 		prefix = os.getcwd()+"/experiments/"+dataset_folder+"/"+ today.strftime('%Y%m%d')+ h + m + "No_Flip/"
 
