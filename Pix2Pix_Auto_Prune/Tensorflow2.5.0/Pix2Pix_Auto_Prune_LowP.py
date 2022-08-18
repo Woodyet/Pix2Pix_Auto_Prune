@@ -744,14 +744,9 @@ def retrain_n_test(block_sizes,generator_weights,generator_weights_old,descrimin
 
 	if Flip:
 		# for generating from facades
-		one = dataset[0]
-		two = dataset[1]
-		dataset = [two,one]
-
-		# for generating from facades
-		one = testset[0]
-		two = testset[1]
-		testset = [two,one]
+		one = batches[0]
+		two = batches[1]
+		batches = [two,one]
 
 	###
 	new_gan = define_generator_edit(block_sizes)
