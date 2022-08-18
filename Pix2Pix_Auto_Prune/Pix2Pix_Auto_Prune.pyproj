@@ -51,6 +51,7 @@
     <Compile Include="Tensorflow2.5.0\kerassurgeon\_utils\__init__.py" />
     <Compile Include="Tensorflow2.5.0\kerassurgeon\__init__.py" />
     <Compile Include="Tensorflow2.5.0\Pix2Pix_Auto_Prune.py" />
+    <Compile Include="Tensorflow2.5.0\Pix2Pix_Auto_Prune_LowP.py" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Tensorflow2.5.0\" />
