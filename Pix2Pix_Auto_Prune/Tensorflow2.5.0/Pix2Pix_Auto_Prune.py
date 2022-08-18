@@ -76,13 +76,13 @@ def apply_pruning_w_params(layer):
         														   begin_step=0,
         														   end_step=end_step)
         }
-        if isinstance(layer, tensorflow.keras.layers.Conv2D):                                                 ###########TO STOP PRUNING OF THE LAST LAYER##############
+        if isinstance(layer, tensorflow.keras.layers.Conv2D) and layer.name != 'no_prune':                                                 ###########TO STOP PRUNING OF THE LAST LAYER##############
             print(layer.name+" Was Identified for pruning")
             return tfmot.sparsity.keras.prune_low_magnitude(layer, **pruning_params)
         return layer
 
 def apply_pruning(layer):
-        if isinstance(layer, tensorflow.keras.layers.Conv2D):                                                 ###########TO STOP PRUNING OF THE LAST LAYER##############
+        if isinstance(layer, tensorflow.keras.layers.Conv2D) and layer.name != 'no_prune':                                                 ###########TO STOP PRUNING OF THE LAST LAYER##############
             print(layer.name+" Was Identified for pruning")
             return tfmot.sparsity.keras.prune_low_magnitude(layer, **pruning_params)
         return layer
