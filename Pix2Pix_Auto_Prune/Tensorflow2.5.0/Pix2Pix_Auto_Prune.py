@@ -566,7 +566,7 @@ def find_nodes(weights,block_sizes,testset_file_loc,n_samples,Flip,conn):
 	gan.set_weights(weights)
 	submodels = []
 	for layer in gan.layers:
-	    if isinstance(layer, tensorflow.keras.layers.Conv2D):
+	    if isinstance(layer, tensorflow.keras.layers.Conv2D)  and layer.name != 'no_prune':
 	        if gan.layers[-1].name not in layer.name:
 	            main_model = tensorflow.keras.models.clone_model(gan)
 	            while True:
@@ -686,12 +686,12 @@ def op_on_model(block_sizes,g_model_weights,remove_points,conn):
 	i = 0
 	
 	for layer1 in g_model.layers:
-		if isinstance(layer1, tensorflow.keras.layers.Conv2D):
+		if isinstance(layer1, tensorflow.keras.layers.Conv2D) and layer1.name != 'no_prune':
 			if g_model.layers[-1].name not in layer1.name:
 				if remove_points[i] != []:
 					j = 0
 					for layer in g_model.layers:
-						if layer1.name == layer.name and layer1.name != 'no_prune': #and not("transpose" in layer.name):
+						if layer1.name == layer.name: #and not("transpose" in layer.name):
 							surgeon.add_job('delete_channels', g_model.layers[j],channels=remove_points[i])
 							new_model = surgeon.operate()
 							block_sizes[i] -= len(remove_points[i])
