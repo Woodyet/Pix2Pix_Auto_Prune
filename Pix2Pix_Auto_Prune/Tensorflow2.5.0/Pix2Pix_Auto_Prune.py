@@ -738,12 +738,6 @@ def retrain_n_test(block_sizes,generator_weights,generator_weights_old,descrimin
 	testset = load_real_samples(testset_file_loc)
 	#testset = tensorflow.convert_to_tensor(testset, dtype=tensorflow.float32)
 
-	if Flip:
-		# for generating from facades
-		one = batches[0]
-		two = batches[1]
-		batches = [two,one]
-
 	###
 	new_gan = define_generator_edit(block_sizes)
 	new_gan.set_weights(generator_weights)
