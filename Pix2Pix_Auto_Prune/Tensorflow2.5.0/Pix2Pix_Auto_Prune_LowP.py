@@ -266,6 +266,9 @@ def define_generator_edit(block_sizes,image_shape=(256,256,3)):
 	return model
 
 
+
+
+
 # define the combined generator and discriminator model, for updating the generator
 
 def define_gan(g_model, d_model, image_shape):
@@ -301,6 +304,7 @@ def define_pruned_gan(g_model, d_model, image_shape):
 	opt = Adam(lr=0.0002, beta_1=0.5)
 	model.compile(loss=['binary_crossentropy', 'mae'], optimizer=opt, loss_weights=[1,100])
 	return model
+
 
 
 # load image array saved in previous step and prepare training images 
@@ -740,9 +744,9 @@ def retrain_n_test(block_sizes,generator_weights,generator_weights_old,descrimin
 		two = dataset[1]
 		dataset = [two,one]
 		# for generating from facades
-		one = testset[0]
-		two = testset[1]
-		testset = [two,one]
+		three = testset[0]
+		four = testset[1]
+		testset = [four,three]
 
 	###
 	new_gan = define_generator_edit(block_sizes)
@@ -847,9 +851,9 @@ def init_train(image_shape,dataset_file_loc,testset_file_loc, testset, prefix, n
 		two = dataset[1]
 		dataset = [two,one]
 		# for generating from facades
-		one = testset[0]
-		two = testset[1]
-		testset = [two,one]
+		three = testset[0]
+		four = testset[1]
+		testset = [four,three]
 
 	# define the models
 	d_model = define_discriminator(image_shape)
@@ -1039,6 +1043,11 @@ if __name__ == "__main__":
 		one = dataset[0]
 		two = dataset[1]
 		dataset = [two,one]
+
+		three = testset[0]
+		four = testset[1]
+		testset = [four,three]
+
 		prefix = os.getcwd()+"/experiments/"+dataset_folder+"/"+ today.strftime('%Y%m%d')+ h + m + "Flip/"		
 	else:
 		prefix = os.getcwd()+"/experiments/"+dataset_folder+"/"+ today.strftime('%Y%m%d')+ h + m + "No_Flip/"
@@ -1052,7 +1061,6 @@ if __name__ == "__main__":
 	image_shape = dataset[0].shape[1:]
 
 	del dataset
-	del testset
 	
 	#######init trian #########
 
@@ -1067,6 +1075,8 @@ if __name__ == "__main__":
 	[old_weights,old_d_weights] = remove_points_returned
 
 	reader_process.join()
+
+	del testset
 
 	#######init prune#########
 
