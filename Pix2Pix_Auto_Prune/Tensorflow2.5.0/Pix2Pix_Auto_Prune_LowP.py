@@ -266,9 +266,6 @@ def define_generator_edit(block_sizes,image_shape=(256,256,3)):
 	return model
 
 
-
-
-
 # define the combined generator and discriminator model, for updating the generator
 
 def define_gan(g_model, d_model, image_shape):
@@ -306,7 +303,6 @@ def define_pruned_gan(g_model, d_model, image_shape):
 	return model
 
 
-
 # load image array saved in previous step and prepare training images 
 
 def load_real_samples(filename):
@@ -319,8 +315,6 @@ def load_real_samples(filename):
 	X1 = (X1 - 127.5) / 127.5
 	X2 = (X2 - 127.5) / 127.5
 	return [X1, X2]
-
-
 
 # select a batch of random samples, returns images and target
 
@@ -359,8 +353,6 @@ def generate_fake_samples(g_model, samples, patch_shape):
 	y = zeros((len(X), patch_shape, patch_shape, 1))
 	X,y = X.astype(np.float16),y.astype(np.float16)
 	return X, y
-
-
 
 # generate samples and save as a plot and save the model
 
@@ -742,6 +734,16 @@ def retrain_n_test(block_sizes,generator_weights,generator_weights_old,descrimin
 	testset = load_real_samples(testset_file_loc)
 	#testset = tensorflow.convert_to_tensor(testset, dtype=tensorflow.float32)
 
+	if Flip:
+		# for generating from facades
+		one = dataset[0]
+		two = dataset[1]
+		dataset = [two,one]
+		# for generating from facades
+		one = testset[0]
+		two = testset[1]
+		testset = [two,one]
+
 	###
 	new_gan = define_generator_edit(block_sizes)
 	new_gan.set_weights(generator_weights)
@@ -831,13 +833,23 @@ def retrain_n_test_no_mp(block_sizes,generator_weights,generator_weights_old,des
 	gweights = g_model.get_weights()
 	dweights = d_model.get_weights()
 
-def init_train(image_shape,dataset_file_loc,testset_file_loc, testset, prefix, n_init_epochs, n_batch, conn):
+def init_train(image_shape,dataset_file_loc,testset_file_loc, testset, prefix, n_init_epochs, n_batch, Flip, conn):
 	### LOAD DATASETS
 
 	dataset = load_real_samples(dataset_file_loc)
 	#dataset = tensorflow.convert_to_tensor(dataset, dtype=tensorflow.float32)
 	testset = load_real_samples(testset_file_loc)
 	#testset = tensorflow.convert_to_tensor(testset, dtype=tensorflow.float32)
+
+	if Flip:
+		# for generating from facades
+		one = dataset[0]
+		two = dataset[1]
+		dataset = [two,one]
+		# for generating from facades
+		one = testset[0]
+		two = testset[1]
+		testset = [two,one]
 
 	# define the models
 	d_model = define_discriminator(image_shape)
@@ -857,11 +869,17 @@ def init_train(image_shape,dataset_file_loc,testset_file_loc, testset, prefix, n
 	conn.send([old_g_weights,old_d_weights])
 	conn.close()
 
-def init_prune(image_shape,dweights,gweights,n_init_epochs,n_batch_fit,dataset_file_loc,prefix,conn):
+def init_prune(image_shape,dweights,gweights,n_init_epochs,n_batch_fit,dataset_file_loc,prefix,Flip,conn):
 	### LOAD DATASETS
 
 	dataset = load_real_samples(dataset_file_loc)
 	#dataset = tensorflow.convert_to_tensor(dataset, dtype=tensorflow.float32)
+
+	if Flip:
+		# for generating from facades
+		one = dataset[0]
+		two = dataset[1]
+		dataset = [two,one]
 
 	###### Initial Prune ######
 
@@ -1032,12 +1050,15 @@ if __name__ == "__main__":
 
 	# define input shape based on the loaded dataset
 	image_shape = dataset[0].shape[1:]
+
+	del dataset
+	del testset
 	
 	#######init trian #########
 
 	parent_conn, child_conn = multiprocessing.Pipe()
 
-	reader_process  = multiprocessing.Process(target=init_train, args=(image_shape,dataset_file_loc,testset_file_loc, testset, prefix, n_init_epochs, n_batch, child_conn))
+	reader_process  = multiprocessing.Process(target=init_train, args=(image_shape,dataset_file_loc,testset_file_loc, testset, prefix, n_init_epochs, n_batch, Flip, child_conn))
 
 	reader_process.start()
 	
@@ -1051,7 +1072,7 @@ if __name__ == "__main__":
 
 	parent_conn, child_conn = multiprocessing.Pipe()
 
-	reader_process  = multiprocessing.Process(target=init_prune, args=(image_shape,old_d_weights,old_weights,n_init_epochs,n_batch_fit,dataset_file_loc,prefix,child_conn))
+	reader_process  = multiprocessing.Process(target=init_prune, args=(image_shape,old_d_weights,old_weights,n_init_epochs,n_batch_fit,dataset_file_loc,prefix, Flip,child_conn))
 
 	reader_process.start()
 	
@@ -1066,9 +1087,6 @@ if __name__ == "__main__":
 	block_sizes = [64,128,256,512,512,512,512,512,512,512,512,512,256,128,64]
 
 	remove_pointers= {'arr': [],'weigh': [],'blocks':[]}
-	
-	del dataset
-	del testset
 
 	tensorflow.keras.backend.clear_session
 
@@ -1109,7 +1127,7 @@ if __name__ == "__main__":
 
 				reader_process = multiprocessing.Process(target=retrain_n_test, args=(block_sizes,pruned_weights,old_weights,
 																		  d_model_weights,image_shape,dataset_file_loc, testset_file_loc, retrain_pocs, 
-																		  prune_pocs, retrain_batches, prune_it, prefix,Flip,child_conn))
+																		  prune_pocs, retrain_batches, prune_it, prefix, Flip,child_conn))
 
 				reader_process.start()
 				
