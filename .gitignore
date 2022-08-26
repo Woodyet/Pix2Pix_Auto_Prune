@@ -342,3 +342,5 @@ healthchecksdb
 /Pix2Pix_Auto_Prune/datasets/facades
 /Pix2Pix_Auto_Prune/datasets
 /Pix2Pix_Auto_Prune/experiments/maps
+/env_2
+/Pix2Pix_Auto_Prune/Tensorflow2.5.0/experiments/testa
