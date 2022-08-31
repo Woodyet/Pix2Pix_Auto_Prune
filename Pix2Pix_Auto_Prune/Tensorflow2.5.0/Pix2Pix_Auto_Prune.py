@@ -49,14 +49,15 @@ import tensorflow_model_optimization as tfmot
 
 
 
-retrain_pocs = 10 
+retrain_pocs = 50 
 prune_pocs = 5
-prune_loops = 50
-n_init_epochs = 25
-n_batch = 1
+prune_loops = 100
+n_init_epochs = 50
+n_init_prune_epochs = 5
+n_batch = 10
 n_batch_fit = 32
 bulk_samples_to_test = 32
-retrain_batches = 32
+retrain_batches = 10
 
 #Flip = False
 #d_select = 5
@@ -76,13 +77,13 @@ def apply_pruning_w_params(layer):
         														   begin_step=0,
         														   end_step=end_step)
         }
-        if isinstance(layer, tensorflow.keras.layers.Conv2D) and layer.name != 'no_prune':                                                 ###########TO STOP PRUNING OF THE LAST LAYER##############
+        if isinstance(layer, tensorflow.keras.layers.Conv2D) and 'no_prune' not in layer.name:                                                 ###########TO STOP PRUNING OF THE LAST LAYER##############
             print(layer.name+" Was Identified for pruning")
             return tfmot.sparsity.keras.prune_low_magnitude(layer, **pruning_params)
         return layer
 
 def apply_pruning(layer):
-        if isinstance(layer, tensorflow.keras.layers.Conv2D) and layer.name != 'no_prune':                                                 ###########TO STOP PRUNING OF THE LAST LAYER##############
+        if isinstance(layer, tensorflow.keras.layers.Conv2D) and 'no_prune' not in layer.name:                                                 ###########TO STOP PRUNING OF THE LAST LAYER##############
             print(layer.name+" Was Identified for pruning")
             return tfmot.sparsity.keras.prune_low_magnitude(layer, **pruning_params)
         return layer
@@ -170,12 +171,12 @@ def define_encoder_block(layer_in, n_filters, batchnorm=True):
 	# weight initialization
 	init = RandomNormal(stddev=0.02)
 	# add downsampling layer
-	g = Conv2D(n_filters, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(layer_in)
+	g = Conv2D(n_filters, (4,4), strides=(2,2), padding='same',activation=LeakyReLU(alpha=0.2), kernel_initializer=init)(layer_in)
 	# conditionally add batch normalization
 	if batchnorm:
 		g = BatchNormalization()(g, training=True)
 	# leaky relu activation
-	g = LeakyReLU(alpha=0.2)(g)
+	#g = LeakyReLU(alpha=0.2)(g)
 	return g
 
 # define a decoder block
@@ -184,7 +185,7 @@ def decoder_block(layer_in, skip_in, n_filters, dropout=True):
 	# weight initialization
 	init = RandomNormal(stddev=0.02)
 	# add upsampling layer
-	g = Conv2DTranspose(n_filters, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(layer_in)
+	g = Conv2DTranspose(n_filters, (4,4), strides=(2,2),activation='relu', padding='same', kernel_initializer=init)(layer_in)
 	# add batch normalization
 	g = BatchNormalization()(g, training=True)
 	# conditionally add dropout
@@ -212,8 +213,8 @@ def define_generator(image_shape=(256,256,3)):
 	e6 = define_encoder_block(e5, 512)
 	e7 = define_encoder_block(e6, 512)
 	# bottleneck, no batch norm and relu
-	b = Conv2D(512, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(e7)
-	b = Activation('relu')(b)
+	b = Conv2D(512, (4,4), strides=(2,2),activation='relu', padding='same', kernel_initializer=init)(e7)
+	#b = Activation('relu')(b)
 	
 # decoder model
 
@@ -225,8 +226,8 @@ def define_generator(image_shape=(256,256,3)):
 	d6 = decoder_block(d5, e2, 128, dropout=False)
 	d7 = decoder_block(d6, e1, 64, dropout=False)
 	# output
-	g = Conv2DTranspose(3, (4,4), strides=(2,2), padding='same', name='no_prune', kernel_initializer=init)(d7)
-	out_image = Activation('tanh')(g)
+	out_image = Conv2DTranspose(3, (4,4), strides=(2,2),activation='tanh', padding='same', name='no_prune', kernel_initializer=init)(d7)
+	#out_image = Activation('tanh')(g)
 	# define model
 	model = Model(in_image, out_image)
 	return model
@@ -246,8 +247,8 @@ def define_generator_edit(block_sizes,image_shape=(256,256,3)):
 	e6 = define_encoder_block(e5, block_sizes[5])
 	e7 = define_encoder_block(e6, block_sizes[6])
 	# bottleneck, no batch norm and relu
-	b = Conv2D(block_sizes[7], (4,4), strides=(2,2), padding='same', kernel_initializer=init)(e7)
-	b = Activation('relu')(b)
+	b = Conv2D(block_sizes[7], (4,4), strides=(2,2),activation='relu' ,padding='same', kernel_initializer=init)(e7)
+	#b = Activation('relu')(b)
 	
 # decoder model
 
@@ -259,8 +260,8 @@ def define_generator_edit(block_sizes,image_shape=(256,256,3)):
 	d6 = decoder_block(d5, e2, block_sizes[13], dropout=False)
 	d7 = decoder_block(d6, e1, block_sizes[14], dropout=False)
 	# output
-	g = Conv2DTranspose(3, (4,4), strides=(2,2), padding='same', name='no_prune', kernel_initializer=init)(d7)
-	out_image = Activation('tanh')(g)
+	out_image = Conv2DTranspose(3, (4,4), strides=(2,2),activation='tanh', padding='same', name='no_prune', kernel_initializer=init)(d7)
+	#out_image = Activation('tanh')(g)
 	# define model
 	model = Model(in_image, out_image)
 	return model
@@ -545,7 +546,7 @@ def add_prune_to_gen(g_model,prune_pocs):
 	}
 	g_model = tensorflow.keras.models.clone_model(g_model,clone_function=apply_pruning,)
 	opt = Adam(lr=0.0002, beta_1=0.5)
-	g_model.compile(loss=['mae'], optimizer=opt)
+	g_model.compile(loss=['binary_crossentropy','mae'], optimizer=opt)
 	return g_model
 
 def find_nodes(weights,block_sizes,testset_file_loc,n_samples,Flip,conn):
@@ -566,7 +567,7 @@ def find_nodes(weights,block_sizes,testset_file_loc,n_samples,Flip,conn):
 	gan.set_weights(weights)
 	submodels = []
 	for layer in gan.layers:
-	    if isinstance(layer, tensorflow.keras.layers.Conv2D)  and layer.name != 'no_prune':
+	    if isinstance(layer, tensorflow.keras.layers.Conv2D)  and 'no_prune' not in layer1.name:
 	        if gan.layers[-1].name not in layer.name:
 	            main_model = tensorflow.keras.models.clone_model(gan)
 	            while True:
@@ -686,7 +687,7 @@ def op_on_model(block_sizes,g_model_weights,remove_points,conn):
 	i = 0
 	
 	for layer1 in g_model.layers:
-		if isinstance(layer1, tensorflow.keras.layers.Conv2D) and layer1.name != 'no_prune':
+		if isinstance(layer1, tensorflow.keras.layers.Conv2D) and 'no_prune' not in layer1.name:
 			if g_model.layers[-1].name not in layer1.name:
 				if remove_points[i] != []:
 					j = 0
@@ -771,7 +772,7 @@ def retrain_n_test(block_sizes,generator_weights,generator_weights_old,descrimin
 	g_model = tensorflow.keras.models.clone_model(g_model,clone_function=apply_pruning_w_params,)
 
 	opt = Adam(lr=0.0002, beta_1=0.5)
-	g_model.compile(loss=['mae'], optimizer=opt)
+	g_model.compile(loss=['binary_crossentropy','mae'], optimizer=opt)
 
 	callbacks = [tfmot.sparsity.keras.UpdatePruningStep()]
 
@@ -818,7 +819,7 @@ def retrain_n_test_no_mp(block_sizes,generator_weights,generator_weights_old,des
 	g_model = tensorflow.keras.models.clone_model(g_model,clone_function=apply_pruning_w_params,)
 
 	opt = Adam(lr=0.0002, beta_1=0.5)
-	g_model.compile(loss=['mae'], optimizer=opt)
+	g_model.compile(loss=['binary_crossentropy','mae'], optimizer=opt)
 
 	callbacks = [tfmot.sparsity.keras.UpdatePruningStep()]
 
@@ -910,7 +911,7 @@ def init_prune(image_shape,dweights,gweights,n_init_epochs,n_batch_fit,dataset_f
 	callbacks = [tfmot.sparsity.keras.UpdatePruningStep()]
 
 	opt = Adam(lr=0.0002, beta_1=0.5)
-	g_model.compile(loss=['mae'], optimizer=opt)
+	g_model.compile(loss=['binary_crossentropy','mae'], optimizer=opt)
 	g_model.fit(dataset[0],dataset[1],callbacks=callbacks,epochs=n_init_epochs, batch_size = n_batch_fit)
 	g_model = tfmot.sparsity.keras.strip_pruning(g_model)
 	g_model.save(prefix+"PrunedModel.h5")
@@ -1082,7 +1083,7 @@ if __name__ == "__main__":
 
 	parent_conn, child_conn = multiprocessing.Pipe()
 
-	reader_process  = multiprocessing.Process(target=init_prune, args=(image_shape,old_d_weights,old_weights,n_init_epochs,n_batch_fit,dataset_file_loc,prefix, Flip,child_conn))
+	reader_process  = multiprocessing.Process(target=init_prune, args=(image_shape,old_d_weights,old_weights,n_init_prune_epochs,n_batch_fit,dataset_file_loc,prefix, Flip,child_conn))
 
 	reader_process.start()
 	
