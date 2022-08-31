@@ -34,6 +34,7 @@ import pathlib
 import sys
 import time
 import gc
+import matplotlib
 from matplotlib import pyplot
 import multiprocessing
 import wget
@@ -42,6 +43,7 @@ import tarfile
 import os
 from datetime import datetime
 from sys import platform
+from PIL import Image
 
 from kerassurgeon import Surgeon
 
@@ -76,13 +78,13 @@ def apply_pruning_w_params(layer):
         														   begin_step=0,
         														   end_step=end_step)
         }
-        if isinstance(layer, tensorflow.keras.layers.Conv2D) and layer.name != 'no_prune':                                                 ###########TO STOP PRUNING OF THE LAST LAYER##############
+        if isinstance(layer, tensorflow.keras.layers.Conv2D) and 'no_prune' not in layer.name:                                                 ###########TO STOP PRUNING OF THE LAST LAYER##############
             print(layer.name+" Was Identified for pruning")
             return tfmot.sparsity.keras.prune_low_magnitude(layer, **pruning_params)
         return layer
 
 def apply_pruning(layer):
-        if isinstance(layer, tensorflow.keras.layers.Conv2D) and layer.name != 'no_prune':                                                 ###########TO STOP PRUNING OF THE LAST LAYER##############
+        if isinstance(layer, tensorflow.keras.layers.Conv2D) and 'no_prune' not in layer.name:                                                 ###########TO STOP PRUNING OF THE LAST LAYER##############
             print(layer.name+" Was Identified for pruning")
             return tfmot.sparsity.keras.prune_low_magnitude(layer, **pruning_params)
         return layer
@@ -96,7 +98,7 @@ def choose_load_images(Selector):
 			print("Processing Images")
 			for filename in tqdm(listdir(path)):
 				# load and resize the image
-				pixels = load_img(path + "\\" + filename, target_size=size)
+				pixels = load_img(path + '/' + filename, target_size=size)
 				# convert to numpy array
 				pixels = img_to_array(pixels)
 				pixels = pixels.astype(np.int16)
@@ -112,7 +114,7 @@ def choose_load_images(Selector):
 			print("Processing Images")
 			for filename in tqdm(listdir(path)):
 				# load and resize the image
-				pixels = load_img(path + "\\" + filename, target_size=size)
+				pixels = load_img(path + '/' + filename, target_size=size)
 				# convert to numpy array
 				pixels = img_to_array(pixels)
 				# split into satellite and map
@@ -170,12 +172,12 @@ def define_encoder_block(layer_in, n_filters, batchnorm=True):
 	# weight initialization
 	init = RandomNormal(stddev=0.02)
 	# add downsampling layer
-	g = Conv2D(n_filters, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(layer_in)
+	g = Conv2D(n_filters, (4,4), strides=(2,2), padding='same',activation=LeakyReLU(alpha=0.2), kernel_initializer=init)(layer_in)
 	# conditionally add batch normalization
 	if batchnorm:
 		g = BatchNormalization()(g, training=True)
 	# leaky relu activation
-	g = LeakyReLU(alpha=0.2)(g)
+	#g = LeakyReLU(alpha=0.2)(g)
 	return g
 
 # define a decoder block
@@ -184,7 +186,7 @@ def decoder_block(layer_in, skip_in, n_filters, dropout=True):
 	# weight initialization
 	init = RandomNormal(stddev=0.02)
 	# add upsampling layer
-	g = Conv2DTranspose(n_filters, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(layer_in)
+	g = Conv2DTranspose(n_filters, (4,4), strides=(2,2),activation='relu', padding='same', kernel_initializer=init)(layer_in)
 	# add batch normalization
 	g = BatchNormalization()(g, training=True)
 	# conditionally add dropout
@@ -212,8 +214,8 @@ def define_generator(image_shape=(256,256,3)):
 	e6 = define_encoder_block(e5, 512)
 	e7 = define_encoder_block(e6, 512)
 	# bottleneck, no batch norm and relu
-	b = Conv2D(512, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(e7)
-	b = Activation('relu')(b)
+	b = Conv2D(512, (4,4), strides=(2,2),activation='relu', padding='same', kernel_initializer=init)(e7)
+	#b = Activation('relu')(b)
 	
 # decoder model
 
@@ -225,8 +227,8 @@ def define_generator(image_shape=(256,256,3)):
 	d6 = decoder_block(d5, e2, 128, dropout=False)
 	d7 = decoder_block(d6, e1, 64, dropout=False)
 	# output
-	g = Conv2DTranspose(3, (4,4), strides=(2,2),name='no_prune', padding='same', kernel_initializer=init)(d7)
-	out_image = Activation('tanh')(g)
+	out_image = Conv2DTranspose(3, (4,4), strides=(2,2),activation='tanh', padding='same', name='no_prune', kernel_initializer=init)(d7)
+	#out_image = Activation('tanh')(g)
 	# define model
 	model = Model(in_image, out_image)
 	return model
@@ -246,8 +248,8 @@ def define_generator_edit(block_sizes,image_shape=(256,256,3)):
 	e6 = define_encoder_block(e5, block_sizes[5])
 	e7 = define_encoder_block(e6, block_sizes[6])
 	# bottleneck, no batch norm and relu
-	b = Conv2D(block_sizes[7], (4,4), strides=(2,2), padding='same', kernel_initializer=init)(e7)
-	b = Activation('relu')(b)
+	b = Conv2D(block_sizes[7], (4,4), strides=(2,2),activation='relu' ,padding='same', kernel_initializer=init)(e7)
+	#b = Activation('relu')(b)
 	
 # decoder model
 
@@ -259,8 +261,8 @@ def define_generator_edit(block_sizes,image_shape=(256,256,3)):
 	d6 = decoder_block(d5, e2, block_sizes[13], dropout=False)
 	d7 = decoder_block(d6, e1, block_sizes[14], dropout=False)
 	# output
-	g = Conv2DTranspose(3, (4,4), strides=(2,2), padding='same', name='no_prune', kernel_initializer=init)(d7)
-	out_image = Activation('tanh')(g)
+	out_image = Conv2DTranspose(3, (4,4), strides=(2,2),activation='tanh', padding='same', name='no_prune', kernel_initializer=init)(d7)
+	#out_image = Activation('tanh')(g)
 	# define model
 	model = Model(in_image, out_image)
 	return model
@@ -306,7 +308,6 @@ def define_pruned_gan(g_model, d_model, image_shape):
 	return model
 
 
-
 # load image array saved in previous step and prepare training images 
 
 def load_real_samples(filename):
@@ -319,6 +320,35 @@ def load_real_samples(filename):
 	X2 = (X2 - 127.5) / 127.5
 	return [X1, X2]
 
+def Generate_Test_Images(generator_weights,testset_file_loc,image_output_location, conn):
+	vars = 0
+	#load generator
+	
+	g_model = tensorflow.keras.models.load_model(generator_weights)
+	
+	#load testset
+	testset = load_real_samples(testset_file_loc)
+	
+	if Flip:
+		three = testset[0]
+		four = testset[1]
+		testset = [four,three]
+	
+	
+	X, Y = testset	
+	X = g_model.predict(X,verbose='1')
+	X = (X + 1) / 2.0
+
+	x=0
+	print("making_outputs_for" + testset_file_loc)
+	for array in tqdm(X):
+		matplotlib.image.imsave(image_output_location+"\\"+str(x)+".png", array)
+		x+=1
+	
+	
+	
+	conn.send([vars])
+	conn.close()
 
 
 if __name__ == "__main__":
@@ -435,40 +465,12 @@ if __name__ == "__main__":
 	experiment_to_test = "D:\\Woody_PHD_Stuff\\Pix2Pix\\ExperimentA\\"
 	####
 
-	def Generate_Test_Images(generator_weights,block_sizes,testset_file_loc,image_output_location, conn):
-		vars = 0
-		#load generator
-
-		d_model = define_discriminator(image_shape)
-		g_model = define_generator(image_shape)
-
-		g_model.set_weights(generator_weights)
-		
-		#load testset
-		testset = load_real_samples(testset_file_loc)
-
-		if Flip:
-			three = testset[0]
-			four = testset[1]
-			testset = [four,three]
-
-
-		X, Y = testset
-
-		X = gan.predict(samples)
-		X = (X + 1) / 2.0
-
-
-
-		#conn.send([vars])
-		#conn.close()
-
-	def Locate_initial_gan_training(directory_in_str):
+	def Locate_Models(directory_in_str,lookfor):
 		directory = os.fsencode(directory_in_str)
 		files = []
 		for file in os.listdir(directory):
 			filename = os.fsdecode(file)
-			if "gmodel" in filename: 
+			if lookfor in filename: 
 				print(os.path.join(directory, file))
 				files.append(filename)
 		return files
@@ -477,23 +479,125 @@ if __name__ == "__main__":
 
 	
 
-	Gan_Init_Gen = Locate_initial_gan_training(experiment_to_test)
+	Gan_Init_Gen = Locate_Models(experiment_to_test,"gmodel")
 	
 	####### Generate Gan Training Images #########
 
-	block_sizes = [64,128,256,512,512,512,512,512,512,512,512,512,256,128,64]
+	image_save_location = experiment_to_test + "\\Inital_train"
+
+	if not os.path.exists(image_save_location):
+		os.makedirs(image_save_location)
 
 	for generator_weights_location in Gan_Init_Gen:
 
+		gen_in_test = generator_weights_location
+
 		generator_weights_location = experiment_to_test + generator_weights_location
-	
 
-		Generate_Test_Images(generator_weights_location,block_sizes,testset_file_loc,"test", 1)
+		spec_save_location = image_save_location + "\\" + gen_in_test + "\\"
 
+		spec_save_location = spec_save_location[:-4]
+
+		if not os.path.exists(spec_save_location):
+			os.makedirs(spec_save_location)
 
 		parent_conn, child_conn = multiprocessing.Pipe()
 	
-		reader_process  = multiprocessing.Process(target=Generate_Test_Images, args=(generator_weights,block_sizes,testset_file_loc,image_output_location, child_conn))
+		reader_process  = multiprocessing.Process(target=Generate_Test_Images, args=(generator_weights_location,testset_file_loc,spec_save_location, child_conn))
+	
+		reader_process.start()
+	
+		remove_points_returned = parent_conn.recv()
+	
+		[vars] = remove_points_returned
+	
+		reader_process.join()
+
+	image_save_location = experiment_to_test + "\\Inital_models"
+
+	if not os.path.exists(image_save_location):
+		os.makedirs(image_save_location)
+
+	for generator_weights_location in ["PrunedModel.h5","UnPrunedModel.h5"]:
+
+		gen_in_test = generator_weights_location
+
+		generator_weights_location = experiment_to_test + generator_weights_location
+
+		spec_save_location = image_save_location + "\\" + gen_in_test + "\\"
+
+		spec_save_location = spec_save_location[:-4]
+
+		if not os.path.exists(spec_save_location):
+			os.makedirs(spec_save_location)
+
+		parent_conn, child_conn = multiprocessing.Pipe()
+	
+		reader_process  = multiprocessing.Process(target=Generate_Test_Images, args=(generator_weights_location,testset_file_loc,spec_save_location, child_conn))
+	
+		reader_process.start()
+	
+		remove_points_returned = parent_conn.recv()
+	
+		[vars] = remove_points_returned
+	
+		reader_process.join()
+
+	Post_Pruned = Locate_Models(experiment_to_test,"post")
+
+	image_save_location = experiment_to_test + "\\Post_pruned_models"
+
+	if not os.path.exists(image_save_location):
+		os.makedirs(image_save_location)
+
+	for generator_weights_location in Post_Pruned:
+
+		gen_in_test = generator_weights_location
+
+		generator_weights_location = experiment_to_test + generator_weights_location
+
+		spec_save_location = image_save_location + "\\" + gen_in_test + "\\"
+
+		spec_save_location = spec_save_location[:-4]
+
+		if not os.path.exists(spec_save_location):
+			os.makedirs(spec_save_location)
+
+		parent_conn, child_conn = multiprocessing.Pipe()
+	
+		reader_process  = multiprocessing.Process(target=Generate_Test_Images, args=(generator_weights_location,testset_file_loc,spec_save_location, child_conn))
+	
+		reader_process.start()
+	
+		remove_points_returned = parent_conn.recv()
+	
+		[vars] = remove_points_returned
+	
+		reader_process.join()
+
+	Post_Pruned = Locate_Models(experiment_to_test,"pre")
+
+	image_save_location = experiment_to_test + "\\Pre_pruned_models"
+
+	if not os.path.exists(image_save_location):
+		os.makedirs(image_save_location)
+
+	for generator_weights_location in Post_Pruned:
+
+		gen_in_test = generator_weights_location
+
+		generator_weights_location = experiment_to_test + generator_weights_location
+
+		spec_save_location = image_save_location + "\\" + gen_in_test + "\\"
+
+		spec_save_location = spec_save_location[:-4]
+
+		if not os.path.exists(spec_save_location):
+			os.makedirs(spec_save_location)
+
+		parent_conn, child_conn = multiprocessing.Pipe()
+	
+		reader_process  = multiprocessing.Process(target=Generate_Test_Images, args=(generator_weights_location,testset_file_loc,spec_save_location, child_conn))
 	
 		reader_process.start()
 	
