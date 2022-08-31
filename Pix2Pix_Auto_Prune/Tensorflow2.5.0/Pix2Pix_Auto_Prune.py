@@ -567,7 +567,7 @@ def find_nodes(weights,block_sizes,testset_file_loc,n_samples,Flip,conn):
 	gan.set_weights(weights)
 	submodels = []
 	for layer in gan.layers:
-	    if isinstance(layer, tensorflow.keras.layers.Conv2D)  and 'no_prune' not in layer1.name:
+	    if isinstance(layer, tensorflow.keras.layers.Conv2D)  and 'no_prune' not in layer.name:
 	        if gan.layers[-1].name not in layer.name:
 	            main_model = tensorflow.keras.models.clone_model(gan)
 	            while True:

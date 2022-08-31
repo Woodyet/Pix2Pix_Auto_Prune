@@ -58,10 +58,10 @@ n_batch_fit = 32
 bulk_samples_to_test = 32
 retrain_batches = 10
 
-#Flip = False
-#d_select = 5
+Flip = True
+d_select = 1
 
-[_,Flip,d_select] = (sys.argv)
+#[_,Flip,d_select] = (sys.argv)
 
 Flip = bool(int(Flip))
 d_select = int(d_select)
@@ -429,40 +429,77 @@ if __name__ == "__main__":
 	#dataset = tensorflow.convert_to_tensor(dataset, dtype=tensorflow.float32)
 	testset = load_real_samples(testset_file_loc)
 
+	image_shape = testset[0].shape[1:]
+
 	####
-	experiment_to_test = ""
+	experiment_to_test = "D:\\Woody_PHD_Stuff\\Pix2Pix\\ExperimentA\\"
 	####
 
-	test = Count_H_Files(directory_in_str)
+	def Generate_Test_Images(generator_weights,block_sizes,testset_file_loc,image_output_location, conn):
+		vars = 0
+		#load generator
 
-	for i in models_to_test:
+		d_model = define_discriminator(image_shape)
+		g_model = define_generator(image_shape)
 
-		####### Generate Images #########
+		g_model.set_weights(generator_weights)
+		
+		#load testset
+		testset = load_real_samples(testset_file_loc)
+
+		if Flip:
+			three = testset[0]
+			four = testset[1]
+			testset = [four,three]
+
+
+		X, Y = testset
+
+		X = gan.predict(samples)
+		X = (X + 1) / 2.0
+
+
+
+		#conn.send([vars])
+		#conn.close()
+
+	def Locate_initial_gan_training(directory_in_str):
+		directory = os.fsencode(directory_in_str)
+		files = []
+		for file in os.listdir(directory):
+			filename = os.fsdecode(file)
+			if "gmodel" in filename: 
+				print(os.path.join(directory, file))
+				files.append(filename)
+		return files
+
+	
+
+	
+
+	Gan_Init_Gen = Locate_initial_gan_training(experiment_to_test)
+	
+	####### Generate Gan Training Images #########
+
+	block_sizes = [64,128,256,512,512,512,512,512,512,512,512,512,256,128,64]
+
+	for generator_weights_location in Gan_Init_Gen:
+
+		generator_weights_location = experiment_to_test + generator_weights_location
+	
+
+		Generate_Test_Images(generator_weights_location,block_sizes,testset_file_loc,"test", 1)
+
 
 		parent_conn, child_conn = multiprocessing.Pipe()
-
+	
 		reader_process  = multiprocessing.Process(target=Generate_Test_Images, args=(generator_weights,block_sizes,testset_file_loc,image_output_location, child_conn))
-
+	
 		reader_process.start()
 	
 		remove_points_returned = parent_conn.recv()
 	
 		[vars] = remove_points_returned
-
+	
 		reader_process.join()
 
-	def Generate_Test_Images(generator_weights,block_sizes,testset_file_loc,image_output_location, conn):
-		vars = 0
-
-		conn.send([vars])
-		conn.close()
-
-	def Count_H_Files(directory_in_str):
-		directory = os.fsencode(directory_in_str)
-		num_of_h5 = 0
-		for file in os.listdir(directory):
-			filename = os.fsdecode(file)
-			if filename.endswith(".h5") and filename[:6] == "pruned": 
-				print(os.path.join(directory, filename))
-				num_of_h5+=1
-		return num_of_h5
