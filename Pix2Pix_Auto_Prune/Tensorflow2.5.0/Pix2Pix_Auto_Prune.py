@@ -563,8 +563,7 @@ def find_nodes(weights,block_sizes,testset_file_loc,n_samples,Flip,conn):
 
 
 	###### Splitting Model #######
-	gan = define_generator_edit(block_sizes)
-	gan.set_weights(weights)
+	gan = tensorflow.keras.models.load_model(weights)
 	submodels = []
 	for layer in gan.layers:
 	    if isinstance(layer, tensorflow.keras.layers.Conv2D)  and 'no_prune' not in layer.name:
@@ -681,14 +680,13 @@ def find_nodes(weights,block_sizes,testset_file_loc,n_samples,Flip,conn):
 
 
 def op_on_model(block_sizes,g_model_weights,remove_points,conn):
-	g_model = define_generator_edit(block_sizes)
-	g_model.set_weights(g_model_weights)
+	g_model = tensorflow.keras.models.load_model(g_model_weights)
 	surgeon = Surgeon(g_model)
 	i = 0
 	
 	for layer1 in g_model.layers:
 		if isinstance(layer1, tensorflow.keras.layers.Conv2D) and 'no_prune' not in layer1.name:
-			if g_model.layers[-1].name not in layer1.name:
+			if g_model.layers[-1].name not in layer1.name: #don't prune last layer
 				if remove_points[i] != []:
 					j = 0
 					for layer in g_model.layers:
@@ -697,16 +695,19 @@ def op_on_model(block_sizes,g_model_weights,remove_points,conn):
 							new_model = surgeon.operate()
 							block_sizes[i] -= len(remove_points[i])
 							tensorflow.compat.v1.reset_default_graph()
-							g_model = define_generator_edit(block_sizes)
-							g_model.set_weights(new_model.get_weights())
+
+							new_model.save(g_model_weights+"TEMP")
+							g_model = tensorflow.keras.models.load_model(g_model_weights+"TEMP")
+
 							surgeon = Surgeon(g_model)
 							break
 						j+=1 
 				i+=1
 	
 	
-	pruned_weights = g_model.get_weights()
-	conn.send([block_sizes,pruned_weights])
+	#pruned_weights = g_model.get_weights()
+	g_model.save(g_model_weights+"fin.h5")
+	conn.send([block_sizes,g_model_weights+"fin.h5"])
 	conn.close()
 
 def op_on_model_NMP(block_sizes,g_model_weights,remove_points):
@@ -750,15 +751,20 @@ def retrain_n_test(block_sizes,generator_weights,generator_weights_old,descrimin
 		testset = [four,three]
 
 	###
-	new_gan = define_generator_edit(block_sizes)
-	new_gan.set_weights(generator_weights)
+	#new_gan = define_generator_edit(block_sizes)
+	#new_gan.set_weights(generator_weights)
+	
+	new_gan = tensorflow.keras.models.load_model(generator_weights)
 
-	d_model = define_discriminator(image_shape)
-	###
-	old_gen = define_generator()
-	old_gen.set_weights(generator_weights_old)
-	###
+	d_model = tensorflow.keras.models.load_model(descriminator_weights)
 
+	d_model._name="discrim"
+	###
+	#old_gen = define_generator()
+	#old_gen.set_weights(generator_weights_old)
+	old_gen = tensorflow.keras.models.load_model(generator_weights_old)
+	###
+	old_gen._name="old_gen"
 	gan_model = define_pruned_gan(new_gan, d_model, image_shape)
 
 	train_wo_save(d_model, new_gan, gan_model, dataset, testset, retrain_pocs ,n_batch=n_batch)
@@ -779,8 +785,9 @@ def retrain_n_test(block_sizes,generator_weights,generator_weights_old,descrimin
 	g_model.fit(dataset[0],dataset[1],callbacks=callbacks,epochs=prune_pocs,batch_size=n_batch_fit)
 
 	g_model = tfmot.sparsity.keras.strip_pruning(g_model)
-	g_model.save(prefix+"pruned_post"+str(prune_it)+".h5")
-	
+	g_model.save(prefix+"pruned_post_g"+str(prune_it)+".h5")
+	d_model.save(prefix+"pruned_post_d"+str(prune_it)+".h5")
+
 	textfile = open(prefix+"pruned_block_sizes"+str(prune_it)+".txt", "w")
 	for element in block_sizes:
 		textfile.write(str(element) + "\n")
@@ -788,9 +795,7 @@ def retrain_n_test(block_sizes,generator_weights,generator_weights_old,descrimin
 	
 	plot_compare(prune_it, g_model, old_gen, testset, prefix)
 
-	gweights = g_model.get_weights()
-	dweights = d_model.get_weights()
-	conn.send([gweights,dweights])
+	conn.send([prefix+"pruned_post_g"+str(prune_it)+".h5",prefix+"pruned_post_d"+str(prune_it)+".h5"])
 	conn.close()
 
 
@@ -866,12 +871,13 @@ def init_train(image_shape,dataset_file_loc,testset_file_loc, testset, prefix, n
 
 	train(d_model, g_model, gan_model, dataset, testset, prefix, n_epochs=n_init_epochs, n_batch=n_batch)
 
-	old_g_weights = g_model.get_weights()
-	old_d_weights = d_model.get_weights()
+	#old_g_weights = g_model.get_weights()
+	#old_d_weights = d_model.get_weights()
 
-	g_model.save(prefix+"UnPrunedModel.h5")
+	g_model.save(prefix+"UnPrunedModelG.h5")
+	d_model.save(prefix+"UnPrunedModelD.h5")
 
-	conn.send([old_g_weights,old_d_weights])
+	conn.send([prefix+"UnPrunedModelG.h5",prefix+"UnPrunedModelD.h5"])
 	conn.close()
 
 def init_prune(image_shape,dweights,gweights,n_init_epochs,n_batch_fit,dataset_file_loc,prefix,Flip,conn):
@@ -886,15 +892,10 @@ def init_prune(image_shape,dweights,gweights,n_init_epochs,n_batch_fit,dataset_f
 		two = dataset[1]
 		dataset = [two,one]
 
-	###### Initial Prune ######
+	###### LOAD MODELS ######
 
-	# define the models
-	d_model = define_discriminator(image_shape)
-	g_model = define_generator(image_shape)
-
-	d_model.set_weights(dweights)
-	g_model.set_weights(gweights)
-
+	d_model = tensorflow.keras.models.load_model(dweights)
+	g_model = tensorflow.keras.models.load_model(gweights)
 	####### Inital Train #####
 
 	gan_model = define_pruned_gan(g_model, d_model, image_shape)
@@ -914,12 +915,10 @@ def init_prune(image_shape,dweights,gweights,n_init_epochs,n_batch_fit,dataset_f
 	g_model.compile(loss=['binary_crossentropy','mae'], optimizer=opt)
 	g_model.fit(dataset[0],dataset[1],callbacks=callbacks,epochs=n_init_epochs, batch_size = n_batch_fit)
 	g_model = tfmot.sparsity.keras.strip_pruning(g_model)
-	g_model.save(prefix+"PrunedModel.h5")
-	
-	weights = g_model.get_weights()
-	d_model_weights = d_model.get_weights()
+	g_model.save(prefix+"PrunedModelG.h5")
+	d_model.save(prefix+"PrunedModelD.h5")
 
-	conn.send([weights,d_model_weights])
+	conn.send([prefix+"PrunedModelG.h5",prefix+"PrunedModelD.h5"])
 	conn.close()
 
 if __name__ == "__main__":
@@ -1073,7 +1072,7 @@ if __name__ == "__main__":
 	
 	remove_points_returned = parent_conn.recv()
 	
-	[old_weights,old_d_weights] = remove_points_returned
+	[old_gmodel_loc,old_dmodel_loc] = remove_points_returned
 
 	reader_process.join()
 
@@ -1083,7 +1082,7 @@ if __name__ == "__main__":
 
 	parent_conn, child_conn = multiprocessing.Pipe()
 
-	reader_process  = multiprocessing.Process(target=init_prune, args=(image_shape,old_d_weights,old_weights,n_init_prune_epochs,n_batch_fit,dataset_file_loc,prefix, Flip,child_conn))
+	reader_process  = multiprocessing.Process(target=init_prune, args=(image_shape,old_dmodel_loc,old_gmodel_loc,n_init_prune_epochs,n_batch_fit,dataset_file_loc,prefix, Flip,child_conn))
 
 	reader_process.start()
 	
@@ -1117,7 +1116,6 @@ if __name__ == "__main__":
 
 				###############
 
-
 				parent_conn, child_conn = multiprocessing.Pipe()
 
 				reader_process = multiprocessing.Process(target=op_on_model, args=(block_sizes,weights,remove_points,child_conn))
@@ -1136,7 +1134,7 @@ if __name__ == "__main__":
 
 				
 
-				reader_process = multiprocessing.Process(target=retrain_n_test, args=(block_sizes,pruned_weights,old_weights,
+				reader_process = multiprocessing.Process(target=retrain_n_test, args=(block_sizes,pruned_weights,old_gmodel_loc,
 																		  d_model_weights,image_shape,dataset_file_loc, testset_file_loc, retrain_pocs, 
 																		  prune_pocs, retrain_batches, prune_it, prefix, Flip,child_conn))
 
