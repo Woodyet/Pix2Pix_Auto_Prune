@@ -522,7 +522,7 @@ if __name__ == "__main__":
 		files = []
 		for file in os.listdir(directory):
 			filename = os.fsdecode(file)
-			if lookfor in filename: 
+			if lookfor in filename and "h5fin" not in filename and "post_d" not in filename: 
 				print(os.path.join(directory, file))
 				files.append(filename)
 		return files
@@ -589,7 +589,7 @@ if __name__ == "__main__":
 	if not os.path.exists(image_save_location):
 		os.makedirs(image_save_location)
 
-	for generator_weights_location in ["PrunedModel.h5","UnPrunedModel.h5"]:
+	for generator_weights_location in ["PrunedModelG.h5","UnPrunedModelG.h5"]:
 
 		gen_in_test = generator_weights_location
 
