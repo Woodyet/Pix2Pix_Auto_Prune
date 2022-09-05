@@ -4,7 +4,7 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>35c157ae-16ee-488b-8384-e591bd86e9e8</ProjectGuid>
     <ProjectHome>.</ProjectHome>
-    <StartupFile>Tensorflow2.5.0\Pix2Pix_Auto_Prune.py</StartupFile>
+    <StartupFile>Tensorflow2.5.0\Pix2Pix_Generate_Evaluation_Images.py</StartupFile>
     <SearchPath>
     </SearchPath>
     <WorkingDirectory>.</WorkingDirectory>
@@ -51,7 +51,9 @@
     <Compile Include="Tensorflow2.5.0\kerassurgeon\_utils\__init__.py" />
     <Compile Include="Tensorflow2.5.0\kerassurgeon\__init__.py" />
     <Compile Include="Tensorflow2.5.0\Pix2Pix_Auto_Prune.py" />
+    <Compile Include="Tensorflow2.5.0\Pix2Pix_Auto_Prune_Edit_2.py" />
     <Compile Include="Tensorflow2.5.0\Pix2Pix_Auto_Prune_LowP.py" />
+    <Compile Include="Tensorflow2.5.0\Pix2Pix_Generate_Evaluation_Images.py" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Tensorflow2.5.0\" />

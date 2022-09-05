@@ -348,3 +348,5 @@ healthchecksdb
 /env_4_pix2pix
 /datasets/cityscapes
 /Auto_Pruner
+/Pix2Pix_Auto_Prune/munster_000000_000019_leftImg8bit.png
+/Pix2Pix_Auto_Prune/frankfurt_000000_000294_leftImg8bit.png

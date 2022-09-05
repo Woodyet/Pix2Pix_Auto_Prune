@@ -96,7 +96,9 @@ def choose_load_images(Selector):
 			src_list, tar_list = list(), list()
 			# enumerate filenames in directory, assuming all are images
 			print("Processing Images")
-			for filename in tqdm(listdir(path)):
+			pathlist = listdir(path)
+			pathlist.sort(key=lambda fname: int(fname.split('.')[0]))
+			for filename in tqdm(pathlist):
 				# load and resize the image
 				pixels = load_img(path + '/' + filename, target_size=size)
 				# convert to numpy array
@@ -323,7 +325,7 @@ def load_real_samples(filename):
 def Generate_Test_Images(generator_weights,testset_file_loc,image_output_location, conn):
 	vars = 0
 	#load generator
-	
+	First = True
 	g_model = tensorflow.keras.models.load_model(generator_weights)
 	
 	#load testset
@@ -341,14 +343,64 @@ def Generate_Test_Images(generator_weights,testset_file_loc,image_output_locatio
 
 	x=0
 	print("making_outputs_for" + testset_file_loc)
+
+	mypath = "F:\\Data4NN\\Pix2Pix\\leftImg8bit\\val\\frankfurt\\"
+
+	onlyfiles = [f for f in listdir(mypath) if isfile(join(mypath, f))]
+
 	for array in tqdm(X):
-		matplotlib.image.imsave(image_output_location+"\\"+str(x)+".png", array)
+		matplotlib.image.imsave(image_output_location + "\\" + onlyfiles[x], array)
 		x+=1
+
+		if x >= len(onlyfiles) and First:
+			mypath = "F:\\Data4NN\\Pix2Pix\\leftImg8bit\\val\\lindau\\"
+			onlyfiles = [f for f in listdir(mypath) if isfile(join(mypath, f))]
+			x=0
+			First = False
+		elif  x >= len(onlyfiles):
+			mypath = "F:\\Data4NN\\Pix2Pix\\leftImg8bit\\val\\munster\\"
+			onlyfiles = [f for f in listdir(mypath) if isfile(join(mypath, f))]
+			x=0
 	
 	
 	
 	conn.send([vars])
 	conn.close()
+from os.path import isfile, join
+def Generate_GTS(testset_file_loc,image_output_location,A):
+	First = True
+	#load testset
+	testset = load_real_samples(testset_file_loc)	
+	
+	X, Y = testset	
+
+	if A:
+		X=X
+	else:
+		X=Y
+
+	X = (X + 1) / 2.0
+
+	x=0
+	print("making_outputs_for" + testset_file_loc)
+
+	mypath = "F:\\Data4NN\\Pix2Pix\\leftImg8bit\\val\\frankfurt\\"
+
+	onlyfiles = [f for f in listdir(mypath) if isfile(join(mypath, f))]
+
+	for array in tqdm(X):
+		matplotlib.image.imsave(image_output_location + onlyfiles[x], array)
+		x+=1
+
+		if x >= len(onlyfiles) and First:
+			mypath = "F:\\Data4NN\\Pix2Pix\\leftImg8bit\\val\\lindau\\"
+			onlyfiles = [f for f in listdir(mypath) if isfile(join(mypath, f))]
+			x=0
+			First = False
+		elif  x >= len(onlyfiles):
+			mypath = "F:\\Data4NN\\Pix2Pix\\leftImg8bit\\val\\munster\\"
+			onlyfiles = [f for f in listdir(mypath) if isfile(join(mypath, f))]
+			x=0
 
 
 if __name__ == "__main__":
@@ -462,7 +514,7 @@ if __name__ == "__main__":
 	image_shape = testset[0].shape[1:]
 
 	####
-	experiment_to_test = "D:\\Woody_PHD_Stuff\\Pix2Pix\\ExperimentA\\"
+	experiment_to_test = "F:\\Data4NN\\Pix2Pix\\202208311633Flip\\"
 	####
 
 	def Locate_Models(directory_in_str,lookfor):
@@ -477,7 +529,26 @@ if __name__ == "__main__":
 
 	
 
-	
+	image_save_location = experiment_to_test + "\\Ground_Truths"
+
+	if not os.path.exists(image_save_location):
+		os.makedirs(image_save_location)
+	temp = True
+
+	for generator_weights_location in ["A","B"]:
+
+		gen_in_test = generator_weights_location
+
+		generator_weights_location = experiment_to_test + generator_weights_location
+
+		spec_save_location = image_save_location + "\\" + gen_in_test + "\\"
+
+		spec_save_location = spec_save_location
+
+		if not os.path.exists(spec_save_location):
+			os.makedirs(spec_save_location)
+
+		Generate_GTS(testset_file_loc,spec_save_location,temp)
 
 	Gan_Init_Gen = Locate_Models(experiment_to_test,"gmodel")
 	
